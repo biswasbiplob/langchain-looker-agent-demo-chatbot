@@ -111,6 +111,55 @@ def clear_chat():
         app.logger.error(f"Clear chat error: {str(e)}")
         return jsonify({'error': 'Failed to clear chat history'}), 500
 
+@app.route('/api/settings', methods=['POST'])
+def save_settings():
+    """Save Looker configuration settings"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No settings data provided'}), 400
+        
+        # Update environment variables for this session
+        if data.get('lookerBaseUrl'):
+            os.environ['LOOKER_BASE_URL'] = data['lookerBaseUrl']
+        if data.get('lookerClientId'):
+            os.environ['LOOKER_CLIENT_ID'] = data['lookerClientId']
+        if data.get('lookerClientSecret'):
+            os.environ['LOOKER_CLIENT_SECRET'] = data['lookerClientSecret']
+        if data.get('openaiApiKey'):
+            os.environ['OPENAI_API_KEY'] = data['openaiApiKey']
+        if data.get('lookmlModelName'):
+            os.environ['LOOKML_MODEL_NAME'] = data['lookmlModelName']
+        
+        # Set JDBC driver path
+        os.environ['JDBC_DRIVER_PATH'] = '/home/runner/workspace/drivers/looker-jdbc.jar'
+        
+        # Reinitialize the chat agent with new settings
+        global chat_agent
+        try:
+            chat_agent = LookerChatAgent()
+            app.logger.info("Chat agent reinitialized with new settings")
+        except Exception as e:
+            app.logger.warning(f"Failed to reinitialize chat agent: {e}")
+        
+        return jsonify({'status': 'success', 'message': 'Settings saved successfully'})
+        
+    except Exception as e:
+        app.logger.error(f"Settings save error: {str(e)}")
+        return jsonify({'error': 'Failed to save settings'}), 500
+
+@app.route('/api/test-connection', methods=['POST'])
+def test_connection():
+    """Test the Looker connection"""
+    try:
+        if chat_agent.test_connection():
+            return jsonify({'success': True, 'message': 'Connection successful'})
+        else:
+            return jsonify({'success': False, 'error': 'Connection failed - check your credentials'})
+    except Exception as e:
+        app.logger.error(f"Connection test error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/health')
 def health():
     """Health check endpoint"""

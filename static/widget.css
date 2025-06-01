@@ -375,12 +375,149 @@
     }
 }
 
+/* Settings Panel */
+.settings-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--background-dark);
+    border-radius: inherit;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.settings-header {
+    background: var(--surface-dark);
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.settings-header h3 {
+    color: var(--text-primary);
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.btn-close-settings {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-close-settings:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+.settings-content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.form-group input {
+    background: var(--surface-dark);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: var(--text-primary);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.form-group input:focus {
+    border-color: var(--primary-color);
+}
+
+.form-group input::placeholder {
+    color: var(--text-secondary);
+}
+
+.settings-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.btn-save-settings,
+.btn-test-connection {
+    flex: 1;
+    background: var(--primary-color);
+    border: none;
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: white;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-save-settings:hover,
+.btn-test-connection:hover {
+    background: var(--primary-hover);
+}
+
+.btn-test-connection {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+.btn-test-connection:hover {
+    background: var(--text-secondary);
+}
+
+.btn-save-settings:disabled,
+.btn-test-connection:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
     .chat-floating-button,
     .chat-window,
     .chat-controls button,
-    .btn-send {
+    .btn-send,
+    .btn-close-settings,
+    .btn-save-settings,
+    .btn-test-connection {
         transition: none;
     }
     

@@ -68,6 +68,12 @@ class LookerChatWidget {
                     Data Analyst Assistant
                 </div>
                 <div class="chat-controls">
+                    <button class="btn-settings" title="Configuration Settings">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="m12 1 2.09 5.26 5.91.74-4.27 4.15.99 5.85L12 15.27 7.27 17l.99-5.85L4 7 9.91 6.26"></path>
+                        </svg>
+                    </button>
                     <button class="btn-minimize" title="Minimize">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -111,6 +117,45 @@ class LookerChatWidget {
                     <small>Powered by Looker BI • Press Enter to send</small>
                 </div>
             </div>
+            <div class="settings-panel" id="settings-panel" style="display: none;">
+                <div class="settings-header">
+                    <h3>Looker Configuration</h3>
+                    <button class="btn-close-settings" title="Close Settings">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+                <div class="settings-content">
+                    <form class="settings-form">
+                        <div class="form-group">
+                            <label for="looker-base-url">Looker Base URL</label>
+                            <input type="url" id="looker-base-url" placeholder="https://your-company.looker.com" />
+                        </div>
+                        <div class="form-group">
+                            <label for="looker-client-id">Client ID</label>
+                            <input type="text" id="looker-client-id" placeholder="Your Looker API client ID" />
+                        </div>
+                        <div class="form-group">
+                            <label for="looker-client-secret">Client Secret</label>
+                            <input type="password" id="looker-client-secret" placeholder="Your Looker API client secret" />
+                        </div>
+                        <div class="form-group">
+                            <label for="openai-api-key">OpenAI API Key</label>
+                            <input type="password" id="openai-api-key" placeholder="Your OpenAI API key" />
+                        </div>
+                        <div class="form-group">
+                            <label for="lookml-model-name">LookML Model Name</label>
+                            <input type="text" id="lookml-model-name" placeholder="Your LookML model name" />
+                        </div>
+                        <div class="settings-actions">
+                            <button type="button" class="btn-save-settings">Save Configuration</button>
+                            <button type="button" class="btn-test-connection">Test Connection</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         `;
         
         this.widgetContainer.appendChild(this.chatWindow);
@@ -123,10 +168,15 @@ class LookerChatWidget {
         });
         
         // Chat controls
+        const settingsBtn = this.chatWindow.querySelector('.btn-settings');
         const minimizeBtn = this.chatWindow.querySelector('.btn-minimize');
         const closeBtn = this.chatWindow.querySelector('.btn-close');
         const sendBtn = this.chatWindow.querySelector('.btn-send');
         const chatInput = this.chatWindow.querySelector('.chat-input');
+        
+        settingsBtn.addEventListener('click', () => {
+            this.openSettings();
+        });
         
         minimizeBtn.addEventListener('click', () => {
             this.minimizeChat();
@@ -152,10 +202,30 @@ class LookerChatWidget {
             }
         });
         
+        // Settings panel controls
+        const closeSettingsBtn = this.chatWindow.querySelector('.btn-close-settings');
+        const saveSettingsBtn = this.chatWindow.querySelector('.btn-save-settings');
+        const testConnectionBtn = this.chatWindow.querySelector('.btn-test-connection');
+        
+        closeSettingsBtn.addEventListener('click', () => {
+            this.closeSettings();
+        });
+        
+        saveSettingsBtn.addEventListener('click', () => {
+            this.saveSettings();
+        });
+        
+        testConnectionBtn.addEventListener('click', () => {
+            this.testConnection();
+        });
+        
         // Prevent click propagation on chat window
         this.chatWindow.addEventListener('click', (e) => {
             e.stopPropagation();
         });
+        
+        // Load saved settings on init
+        this.loadSettings();
     }
     
     toggleChat() {
@@ -355,6 +425,122 @@ class LookerChatWidget {
         messagesContainer.appendChild(messageDiv);
     }
     
+    // Settings management methods
+    openSettings() {
+        const settingsPanel = this.chatWindow.querySelector('#settings-panel');
+        const messagesContainer = this.chatWindow.querySelector('#chat-messages');
+        const inputContainer = this.chatWindow.querySelector('.chat-input-container');
+        
+        messagesContainer.style.display = 'none';
+        inputContainer.style.display = 'none';
+        settingsPanel.style.display = 'block';
+    }
+    
+    closeSettings() {
+        const settingsPanel = this.chatWindow.querySelector('#settings-panel');
+        const messagesContainer = this.chatWindow.querySelector('#chat-messages');
+        const inputContainer = this.chatWindow.querySelector('.chat-input-container');
+        
+        settingsPanel.style.display = 'none';
+        messagesContainer.style.display = 'flex';
+        inputContainer.style.display = 'block';
+    }
+    
+    loadSettings() {
+        try {
+            const saved = localStorage.getItem('looker-chat-settings');
+            if (saved) {
+                const settings = JSON.parse(saved);
+                
+                const baseUrlInput = this.chatWindow.querySelector('#looker-base-url');
+                const clientIdInput = this.chatWindow.querySelector('#looker-client-id');
+                const clientSecretInput = this.chatWindow.querySelector('#looker-client-secret');
+                const openaiKeyInput = this.chatWindow.querySelector('#openai-api-key');
+                const modelNameInput = this.chatWindow.querySelector('#lookml-model-name');
+                
+                if (baseUrlInput) baseUrlInput.value = settings.lookerBaseUrl || '';
+                if (clientIdInput) clientIdInput.value = settings.lookerClientId || '';
+                if (clientSecretInput) clientSecretInput.value = settings.lookerClientSecret || '';
+                if (openaiKeyInput) openaiKeyInput.value = settings.openaiApiKey || '';
+                if (modelNameInput) modelNameInput.value = settings.lookmlModelName || '';
+            }
+        } catch (error) {
+            console.warn('Failed to load settings:', error);
+        }
+    }
+    
+    async saveSettings() {
+        const baseUrlInput = this.chatWindow.querySelector('#looker-base-url');
+        const clientIdInput = this.chatWindow.querySelector('#looker-client-id');
+        const clientSecretInput = this.chatWindow.querySelector('#looker-client-secret');
+        const openaiKeyInput = this.chatWindow.querySelector('#openai-api-key');
+        const modelNameInput = this.chatWindow.querySelector('#lookml-model-name');
+        
+        const settings = {
+            lookerBaseUrl: baseUrlInput.value.trim(),
+            lookerClientId: clientIdInput.value.trim(),
+            lookerClientSecret: clientSecretInput.value.trim(),
+            openaiApiKey: openaiKeyInput.value.trim(),
+            lookmlModelName: modelNameInput.value.trim()
+        };
+        
+        try {
+            // Save to local storage
+            localStorage.setItem('looker-chat-settings', JSON.stringify(settings));
+            
+            // Send to server to update configuration
+            const response = await fetch(`${this.options.apiBaseUrl}/api/settings`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify(settings)
+            });
+            
+            if (response.ok) {
+                this.addMessage('Configuration saved successfully! You can now start asking data questions.', 'assistant');
+                this.closeSettings();
+            } else {
+                throw new Error('Failed to save configuration');
+            }
+        } catch (error) {
+            console.error('Settings save error:', error);
+            this.addMessage('Failed to save configuration. Please try again.', 'assistant', 'error');
+        }
+    }
+    
+    async testConnection() {
+        try {
+            const testBtn = this.chatWindow.querySelector('.btn-test-connection');
+            testBtn.disabled = true;
+            testBtn.textContent = 'Testing...';
+            
+            const response = await fetch(`${this.options.apiBaseUrl}/api/test-connection`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include'
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.addMessage('Connection test successful! Your Looker configuration is working.', 'assistant');
+            } else {
+                this.addMessage(`Connection test failed: ${result.error}`, 'assistant', 'error');
+            }
+        } catch (error) {
+            console.error('Connection test error:', error);
+            this.addMessage('Failed to test connection. Please check your configuration.', 'assistant', 'error');
+        } finally {
+            const testBtn = this.chatWindow.querySelector('.btn-test-connection');
+            testBtn.disabled = false;
+            testBtn.textContent = 'Test Connection';
+        }
+    }
+
     // Public methods for external control
     clearHistory() {
         this.chatHistory = [];

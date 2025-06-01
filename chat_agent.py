@@ -105,18 +105,55 @@ class LookerChatAgent:
             
             # Get response from Looker agent
             if self.agent is not None:
-                # Prepare chat history for the agent
-                formatted_history = ""
-                if chat_history:
-                    recent_history = chat_history[-3:] if len(chat_history) > 3 else chat_history
-                    for exchange in recent_history:
-                        formatted_history += f"Human: {exchange['user']}\nAssistant: {exchange['assistant']}\n\n"
-                
-                result = self.agent.invoke({
-                    "input": user_message,
-                    "chat_history": formatted_history
-                })
-                response = result.get("output", str(result)) if isinstance(result, dict) else str(result)
+                try:
+                    # Prepare chat history for the agent
+                    formatted_history = ""
+                    if chat_history:
+                        recent_history = chat_history[-3:] if len(chat_history) > 3 else chat_history
+                        for exchange in recent_history:
+                            formatted_history += f"Human: {exchange['user']}\nAssistant: {exchange['assistant']}\n\n"
+                    
+                    result = self.agent.invoke({
+                        "input": user_message,
+                        "chat_history": formatted_history
+                    })
+                    
+                    # Extract the response more robustly
+                    if isinstance(result, dict):
+                        response = result.get("output", "")
+                        if not response:
+                            # Try alternative keys
+                            response = result.get("result", result.get("answer", str(result)))
+                    else:
+                        response = str(result)
+                    
+                    # Clean up formatting issues
+                    if "Invalid Format:" in response:
+                        # Extract actual data from before the formatting error
+                        lines = response.split('\n')
+                        data_lines = []
+                        for line in lines:
+                            if "Invalid Format:" in line or "Missing 'Action:'" in line:
+                                break
+                            if line.strip() and not line.startswith("Thought:") and not line.startswith("Action:"):
+                                data_lines.append(line.strip())
+                        if data_lines:
+                            response = ' '.join(data_lines)
+                    
+                except Exception as agent_error:
+                    logging.error(f"Agent execution error: {agent_error}")
+                    # Try to extract any useful information from the error
+                    error_str = str(agent_error)
+                    if "pageviews" in error_str or any(keyword in error_str.lower() for keyword in ["total", "count", "revenue", "users"]):
+                        # There might be actual data in the error message
+                        import re
+                        data_match = re.search(r'([^.]*(?:pageviews|users|revenue|total|count)[^.]*)', error_str, re.IGNORECASE)
+                        if data_match:
+                            response = data_match.group(1).strip()
+                        else:
+                            response = "I found some data but encountered a formatting issue. Please try rephrasing your question."
+                    else:
+                        response = "I apologize, but I encountered an issue while processing your request. Please try rephrasing your question."
             else:
                 return "Agent not properly initialized. Please check your Looker configuration."
             

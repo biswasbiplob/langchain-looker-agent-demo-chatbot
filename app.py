@@ -188,6 +188,65 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
+@app.route('/api/auth/status', methods=['GET'])
+def auth_status():
+    """Check authentication status"""
+    return jsonify({
+        'authenticated': current_user.is_authenticated,
+        'username': current_user.username if current_user.is_authenticated else None
+    })
+
+@app.route('/api/auth/login', methods=['POST'])
+def api_login():
+    """API login endpoint"""
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    
+    from models import User
+    user = User.query.filter_by(username=username).first()
+    
+    if user and user.check_password(password):
+        login_user(user)
+        return jsonify({'success': True, 'message': 'Login successful'})
+    else:
+        return jsonify({'success': False, 'error': 'Invalid username or password'}), 401
+
+@app.route('/api/auth/register', methods=['POST'])
+def api_register():
+    """API register endpoint"""
+    data = request.get_json()
+    username = data.get('username')
+    email = data.get('email')
+    password = data.get('password')
+    
+    from models import User
+    
+    # Check if user already exists
+    if User.query.filter_by(username=username).first():
+        return jsonify({'success': False, 'error': 'Username already exists'}), 400
+    
+    if User.query.filter_by(email=email).first():
+        return jsonify({'success': False, 'error': 'Email already exists'}), 400
+    
+    # Create new user
+    user = User()
+    user.username = username
+    user.email = email
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    
+    login_user(user)
+    return jsonify({'success': True, 'message': 'Registration successful'})
+
+@app.route('/api/auth/logout', methods=['POST'])
+@login_required
+def api_logout():
+    """API logout endpoint"""
+    logout_user()
+    return jsonify({'success': True, 'message': 'Logged out successfully'})
+
 @app.route('/api/chat', methods=['POST'])
 @login_required
 def chat():
@@ -298,15 +357,16 @@ def save_settings():
         return jsonify({'error': 'Failed to save settings'}), 500
 
 @app.route('/api/get-settings', methods=['GET'])
+@login_required
 def get_settings():
-    """Get current settings from environment variables"""
+    """Get current settings from user profile"""
     try:
         settings = {
-            'lookerBaseUrl': os.environ.get('LOOKER_BASE_URL', ''),
-            'lookerClientId': os.environ.get('LOOKER_CLIENT_ID', ''),
-            'lookerClientSecret': '***' if os.environ.get('LOOKER_CLIENT_SECRET') else '',
-            'openaiApiKey': '***' if os.environ.get('OPENAI_API_KEY') else '',
-            'lookmlModelName': os.environ.get('LOOKML_MODEL_NAME', '')
+            'lookerBaseUrl': current_user.looker_base_url or '',
+            'lookerClientId': current_user.looker_client_id or '',
+            'lookerClientSecret': '***' if current_user.looker_client_secret else '',
+            'openaiApiKey': '***' if current_user.openai_api_key else '',
+            'lookmlModelName': current_user.lookml_model_name or ''
         }
         return jsonify(settings)
     except Exception as e:
@@ -314,6 +374,7 @@ def get_settings():
         return jsonify({'error': 'Failed to get settings'}), 500
 
 @app.route('/api/test-connection', methods=['POST'])
+@login_required
 def test_connection():
     """Test the Looker connection"""
     try:

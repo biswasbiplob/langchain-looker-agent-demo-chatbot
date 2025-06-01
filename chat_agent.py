@@ -1,13 +1,6 @@
 import os
 import logging
-from typing import List, Dict, Any
-
-try:
-    from langchain_looker_agent import LookerAgent
-except ImportError as e:
-    logging.error(f"Failed to import langchain_looker_agent: {e}")
-    logging.error("Please ensure the package is installed: pip install langchain-looker-agent")
-    raise
+from typing import List, Dict, Any, Optional
 
 class LookerChatAgent:
     """Chat agent that integrates with Looker BI using langchain-looker-agent"""
@@ -18,35 +11,61 @@ class LookerChatAgent:
         self.looker_client_id = os.getenv('LOOKER_CLIENT_ID')
         self.looker_client_secret = os.getenv('LOOKER_CLIENT_SECRET')
         self.openai_api_key = os.getenv('OPENAI_API_KEY')
+        self.lookml_model_name = os.getenv('LOOKML_MODEL_NAME')
+        self.jdbc_driver_path = os.getenv('JDBC_DRIVER_PATH')
         
-        # Validate required environment variables
-        required_vars = {
-            'LOOKER_BASE_URL': self.looker_base_url,
-            'LOOKER_CLIENT_ID': self.looker_client_id,
-            'LOOKER_CLIENT_SECRET': self.looker_client_secret,
-            'OPENAI_API_KEY': self.openai_api_key
-        }
+        # Check if we have the minimum required credentials
+        self.credentials_available = bool(
+            self.looker_base_url and 
+            self.looker_client_id and 
+            self.looker_client_secret and 
+            self.openai_api_key and
+            self.lookml_model_name and
+            self.jdbc_driver_path
+        )
         
-        missing_vars = [var for var, value in required_vars.items() if not value]
-        if missing_vars:
-            error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
-            logging.error(error_msg)
-            raise ValueError(error_msg)
+        self.agent = None
         
+        if self.credentials_available:
+            try:
+                self._initialize_agent()
+            except Exception as e:
+                logging.error(f"Failed to initialize Looker agent: {e}")
+                self.credentials_available = False
+        
+    def _initialize_agent(self):
+        """Initialize the actual Looker agent"""
         try:
-            # Initialize the Looker agent
-            self.agent = LookerAgent(
-                looker_base_url=self.looker_base_url,
-                looker_client_id=self.looker_client_id,
-                looker_client_secret=self.looker_client_secret,
-                openai_api_key=self.openai_api_key
+            from langchain_looker_agent import create_looker_sql_agent, LookerSQLDatabase, LookerSQLToolkit
+            
+            # Initialize the Looker database connection
+            self.looker_db = LookerSQLDatabase(
+                looker_instance_url=self.looker_base_url,
+                lookml_model_name=self.lookml_model_name,
+                client_id=self.looker_client_id,
+                client_secret=self.looker_client_secret,
+                jdbc_driver_path=self.jdbc_driver_path
             )
+            
+            # Create the Looker SQL toolkit
+            toolkit = LookerSQLToolkit(db=self.looker_db)
+            
+            # Create the Looker SQL agent
+            self.agent = create_looker_sql_agent(
+                toolkit=toolkit,
+                verbose=True
+            )
+            
             logging.info("Looker agent initialized successfully")
+            
+        except ImportError as e:
+            logging.error(f"Failed to import required packages: {e}")
+            raise
         except Exception as e:
             logging.error(f"Failed to initialize Looker agent: {e}")
             raise
     
-    def get_response(self, user_message: str, chat_history: List[Dict[str, str]] = None) -> str:
+    def get_response(self, user_message: str, chat_history: Optional[List[Dict[str, str]]] = None) -> str:
         """
         Get a response from the Looker agent for the user's analytical question
         
@@ -57,6 +76,10 @@ class LookerChatAgent:
         Returns:
             String response from the agent
         """
+        # Check if credentials are available
+        if not self.credentials_available:
+            return self._get_credentials_error_message()
+        
         try:
             # Prepare context from chat history
             context = ""
@@ -70,7 +93,10 @@ class LookerChatAgent:
             full_message = f"{context}User: {user_message}" if context else user_message
             
             # Get response from Looker agent
-            response = self.agent.run(full_message)
+            if self.agent is not None:
+                response = self.agent.run(full_message)
+            else:
+                return "Agent not properly initialized. Please check your Looker configuration."
             
             # Ensure response is a string
             if isinstance(response, dict):
@@ -98,6 +124,36 @@ class LookerChatAgent:
                 error_msg += "Please try rephrasing your question or contact support if the issue persists."
             
             return error_msg
+    
+    def _get_credentials_error_message(self) -> str:
+        """Return an informative message about missing credentials"""
+        missing_vars = []
+        if not self.looker_base_url:
+            missing_vars.append('LOOKER_BASE_URL')
+        if not self.looker_client_id:
+            missing_vars.append('LOOKER_CLIENT_ID')
+        if not self.looker_client_secret:
+            missing_vars.append('LOOKER_CLIENT_SECRET')
+        if not self.openai_api_key:
+            missing_vars.append('OPENAI_API_KEY')
+        if not self.lookml_model_name:
+            missing_vars.append('LOOKML_MODEL_NAME')
+        if not self.jdbc_driver_path:
+            missing_vars.append('JDBC_DRIVER_PATH')
+        
+        return f"""I'm unable to connect to your Looker BI platform because some required configuration is missing.
+
+To enable data analysis, I need the following environment variables to be set:
+• LOOKER_BASE_URL - Your Looker instance URL
+• LOOKER_CLIENT_ID - Your Looker API client ID
+• LOOKER_CLIENT_SECRET - Your Looker API client secret
+• OPENAI_API_KEY - OpenAI API key for natural language processing
+• LOOKML_MODEL_NAME - The LookML model to query
+• JDBC_DRIVER_PATH - Path to the Looker JDBC driver
+
+Missing: {', '.join(missing_vars)}
+
+Please configure these credentials to start analyzing your data!"""
     
     def test_connection(self) -> bool:
         """

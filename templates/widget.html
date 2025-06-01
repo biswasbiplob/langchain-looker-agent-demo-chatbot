@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Looker Chat Widget</title>
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='widget.css') }}">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            overflow: hidden;
+        }
+        
+        .widget-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .widget-only {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 10000;
+        }
+    </style>
+</head>
+<body>
+    <div class="widget-container">
+        <div id="looker-chat-widget-standalone" class="widget-only"></div>
+    </div>
+
+    <script src="{{ url_for('static', filename='widget.js') }}"></script>
+    <script>
+        // Initialize widget for standalone/iframe embedding
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get configuration from URL parameters or parent window
+            const urlParams = new URLSearchParams(window.location.search);
+            const apiBaseUrl = urlParams.get('apiBaseUrl') || 
+                              (window.parent !== window ? window.parent.location.origin : window.location.origin);
+            
+            const config = {
+                apiBaseUrl: apiBaseUrl,
+                position: urlParams.get('position') || 'bottom-right',
+                theme: urlParams.get('theme') || 'dark'
+            };
+            
+            // Create widget instance
+            window.lookerChatWidget = new LookerChatWidget(config);
+            
+            // Listen for messages from parent window (if in iframe)
+            if (window.parent !== window) {
+                window.addEventListener('message', function(event) {
+                    if (event.data.type === 'OPEN_CHAT') {
+                        window.lookerChatWidget.openChat();
+                    } else if (event.data.type === 'CLOSE_CHAT') {
+                        window.lookerChatWidget.closeChat();
+                    } else if (event.data.type === 'CLEAR_HISTORY') {
+                        window.lookerChatWidget.clearHistory();
+                    }
+                });
+                
+                // Notify parent that widget is ready
+                window.parent.postMessage({
+                    type: 'WIDGET_READY',
+                    source: 'looker-chat-widget'
+                }, '*');
+            }
+        });
+    </script>
+</body>
+</html>

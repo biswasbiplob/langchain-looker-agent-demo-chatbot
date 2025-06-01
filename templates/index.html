@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Looker Data Analyst Chatbot - Demo</title>
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='widget.css') }}">
+    <style>
+        .hero-section {
+            background: linear-gradient(135deg, rgba(51, 102, 255, 0.1) 0%, rgba(51, 102, 255, 0.05) 100%);
+            border-radius: 16px;
+            margin-bottom: 2rem;
+        }
+        
+        .feature-card {
+            background: var(--bs-body-bg);
+            border: 1px solid var(--bs-border-color);
+            border-radius: 12px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .demo-chat-trigger {
+            position: fixed;
+            bottom: 24px;
+            left: 24px;
+            z-index: 1000;
+        }
+        
+        .code-block {
+            background: var(--bs-dark);
+            border: 1px solid var(--bs-border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.875rem;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center" href="#">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="me-2">
+                    <path d="M9 19c-5 0-8-3-8-8s3-8 8-8 8 3 8 8-3 8-8 8z"></path>
+                    <path d="M21 12c0 4.418-3.582 8-8 8"></path>
+                </svg>
+                Looker Data Analyst
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="#features">Features</a>
+                <a class="nav-link" href="#integration">Integration</a>
+                <a class="nav-link" href="#demo">Demo</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container my-5">
+        <div class="hero-section p-5 text-center">
+            <h1 class="display-4 mb-4">Conversational Data Analyst Chatbot</h1>
+            <p class="lead mb-4">
+                Embed a powerful AI-driven data analyst on any website. Get instant insights from your Looker BI platform through natural language conversations.
+            </p>
+            <div class="d-flex justify-content-center gap-3">
+                <button class="btn btn-primary btn-lg" onclick="window.lookerChatWidget?.openChat()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="me-2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    Try the Demo
+                </button>
+                <a href="#integration" class="btn btn-outline-secondary btn-lg">View Integration Guide</a>
+            </div>
+        </div>
+
+        <section id="features" class="mb-5">
+            <h2 class="text-center mb-4">Key Features</h2>
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="feature-card p-4 h-100">
+                        <div class="text-primary mb-3">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                            </svg>
+                        </div>
+                        <h5>Natural Language Queries</h5>
+                        <p class="text-muted">Ask questions in plain English about your data. No SQL knowledge required.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="feature-card p-4 h-100">
+                        <div class="text-primary mb-3">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+                            </svg>
+                        </div>
+                        <h5>Looker BI Integration</h5>
+                        <p class="text-muted">Direct connection to your Looker platform for real-time data insights.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="feature-card p-4 h-100">
+                        <div class="text-primary mb-3">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+                                <line x1="4" y1="22" x2="4" y2="15"></line>
+                            </svg>
+                        </div>
+                        <h5>Easy Embedding</h5>
+                        <p class="text-muted">Simple JavaScript snippet to embed on any website with minimal setup.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="integration" class="mb-5">
+            <h2 class="text-center mb-4">Integration Guide</h2>
+            <div class="row">
+                <div class="col-lg-8 mx-auto">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title mb-3">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="me-2">
+                                    <polyline points="16 18 22 12 16 6"></polyline>
+                                    <polyline points="8 6 2 12 8 18"></polyline>
+                                </svg>
+                                Embed the Chatbot
+                            </h5>
+                            <p class="text-muted mb-3">Add this code snippet to any webpage to embed the chatbot widget:</p>
+                            <div class="code-block">
+                                <code>&lt;!-- CSS --&gt;<br>
+&lt;link rel="stylesheet" href="{{ request.url_root }}static/widget.css"&gt;<br><br>
+&lt;!-- JavaScript --&gt;<br>
+&lt;script src="{{ request.url_root }}static/widget.js"&gt;&lt;/script&gt;<br>
+&lt;script&gt;<br>
+&nbsp;&nbsp;// Initialize the widget<br>
+&nbsp;&nbsp;const chatWidget = new LookerChatWidget({<br>
+&nbsp;&nbsp;&nbsp;&nbsp;apiBaseUrl: '{{ request.url_root.rstrip('/') }}'<br>
+&nbsp;&nbsp;});<br>
+&lt;/script&gt;</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mt-4">
+                        <div class="card-body">
+                            <h5 class="card-title mb-3">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="me-2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                    <polyline points="14,2 14,8 20,8"></polyline>
+                                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                                    <polyline points="10,9 9,9 8,9"></polyline>
+                                </svg>
+                                Environment Configuration
+                            </h5>
+                            <p class="text-muted mb-3">Configure these environment variables for Looker integration:</p>
+                            <div class="code-block">
+                                <code>LOOKER_BASE_URL=https://your-looker-instance.looker.com<br>
+LOOKER_CLIENT_ID=your_client_id<br>
+LOOKER_CLIENT_SECRET=your_client_secret<br>
+OPENAI_API_KEY=your_openai_api_key<br>
+SESSION_SECRET=your_session_secret</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="demo" class="mb-5">
+            <h2 class="text-center mb-4">Live Demo</h2>
+            <div class="row">
+                <div class="col-lg-8 mx-auto text-center">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Try the Interactive Demo</h5>
+                            <p class="text-muted mb-4">
+                                Click the floating chat button in the bottom right corner to start a conversation with the data analyst assistant.
+                            </p>
+                            <div class="d-flex flex-wrap justify-content-center gap-2 mb-4">
+                                <span class="badge bg-secondary">Sales Analytics</span>
+                                <span class="badge bg-secondary">Customer Insights</span>
+                                <span class="badge bg-secondary">Performance Metrics</span>
+                                <span class="badge bg-secondary">Revenue Trends</span>
+                            </div>
+                            <p class="small text-muted">
+                                <strong>Sample questions to try:</strong><br>
+                                "What are our top performing products this quarter?"<br>
+                                "Show me sales trends by region"<br>
+                                "What's our customer acquisition cost?"
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <footer class="bg-dark py-4 mt-5">
+        <div class="container text-center">
+            <p class="text-muted mb-0">
+                Powered by 
+                <strong>Looker BI</strong> • 
+                <strong>LangChain</strong> • 
+                <strong>Flask</strong>
+            </p>
+        </div>
+    </footer>
+
+    <!-- Demo trigger button (alternative to widget) -->
+    <div class="demo-chat-trigger">
+        <button class="btn btn-outline-light btn-sm" onclick="window.lookerChatWidget?.openChat()" title="Open demo chat">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+            Demo
+        </button>
+    </div>
+
+    <!-- Include Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Include the chat widget -->
+    <script src="{{ url_for('static', filename='widget.js') }}"></script>
+    <script>
+        // Initialize the widget when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof LookerChatWidget !== 'undefined') {
+                window.lookerChatWidget = new LookerChatWidget({
+                    apiBaseUrl: '{{ request.url_root.rstrip('/') }}'
+                });
+            }
+        });
+    </script>
+</body>
+</html>

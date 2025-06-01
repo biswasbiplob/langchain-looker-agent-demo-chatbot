@@ -1,7 +1,8 @@
 import os
 import logging
-from flask import Flask, request, jsonify, render_template, session
+from flask import Flask, request, jsonify, render_template, session, redirect, url_for, flash
 from flask_cors import CORS
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -36,6 +37,17 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
 # Initialize the app with the extension
 db.init_app(app)
 
+# Initialize Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+login_manager.login_message = 'Please log in to access the chatbot.'
+
+@login_manager.user_loader
+def load_user(user_id):
+    from models import User
+    return User.query.get(int(user_id))
+
 # Initialize chat agent (will be None if credentials not available)
 chat_agent = None
 
@@ -43,7 +55,46 @@ def get_or_create_agent():
     """Get existing agent or create new one if credentials are available"""
     global chat_agent
     
-    # Check if we have the required credentials in environment
+    # Get credentials from current user if logged in
+    if current_user.is_authenticated:
+        user_creds = {
+            'LOOKER_BASE_URL': current_user.looker_base_url,
+            'LOOKER_CLIENT_ID': current_user.looker_client_id,
+            'LOOKER_CLIENT_SECRET': current_user.looker_client_secret,
+            'OPENAI_API_KEY': current_user.openai_api_key,
+            'LOOKML_MODEL_NAME': current_user.lookml_model_name
+        }
+        
+        # Check if user has all required credentials
+        missing_creds = [key for key, value in user_creds.items() if not value]
+        if missing_creds:
+            app.logger.warning(f"User missing credentials: {missing_creds}")
+            return None
+        
+        # Set environment variables temporarily for agent creation
+        original_env = {}
+        for key, value in user_creds.items():
+            original_env[key] = os.environ.get(key)
+            os.environ[key] = value
+        
+        # Set JDBC driver path
+        os.environ['JDBC_DRIVER_PATH'] = '/home/runner/workspace/drivers/looker-jdbc.jar'
+        
+        try:
+            chat_agent = LookerChatAgent()
+            return chat_agent
+        except Exception as e:
+            app.logger.warning(f"Could not initialize chat agent: {e}")
+            return None
+        finally:
+            # Restore original environment
+            for key, original_value in original_env.items():
+                if original_value is not None:
+                    os.environ[key] = original_value
+                elif key in os.environ:
+                    del os.environ[key]
+    
+    # Fallback to environment variables if no user is logged in
     required_vars = ['LOOKER_BASE_URL', 'LOOKER_CLIENT_ID', 'LOOKER_CLIENT_SECRET', 'OPENAI_API_KEY', 'LOOKML_MODEL_NAME']
     missing_vars = [var for var in required_vars if not os.environ.get(var)]
     
@@ -51,7 +102,6 @@ def get_or_create_agent():
         app.logger.warning(f"Missing required environment variables: {missing_vars}")
         return None
     
-    # Always create a fresh agent to ensure latest credentials are used
     try:
         chat_agent = LookerChatAgent()
         return chat_agent
@@ -60,16 +110,86 @@ def get_or_create_agent():
         return None
 
 @app.route('/')
+@login_required
 def index():
     """Demo page showing the chatbot widget"""
     return render_template('index.html')
 
 @app.route('/widget')
+@login_required
 def widget():
     """Standalone widget template"""
     return render_template('widget.html')
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page"""
+    if request.method == 'POST':
+        data = request.get_json() if request.is_json else request.form
+        username = data.get('username')
+        password = data.get('password')
+        
+        from models import User
+        user = User.query.filter_by(username=username).first()
+        
+        if user and user.check_password(password):
+            login_user(user)
+            if request.is_json:
+                return jsonify({'success': True, 'message': 'Login successful'})
+            return redirect(url_for('index'))
+        else:
+            if request.is_json:
+                return jsonify({'success': False, 'error': 'Invalid username or password'}), 401
+            flash('Invalid username or password')
+    
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    """Register page"""
+    if request.method == 'POST':
+        data = request.get_json() if request.is_json else request.form
+        username = data.get('username')
+        email = data.get('email')
+        password = data.get('password')
+        
+        from models import User
+        
+        # Check if user already exists
+        if User.query.filter_by(username=username).first():
+            if request.is_json:
+                return jsonify({'success': False, 'error': 'Username already exists'}), 400
+            flash('Username already exists')
+            return render_template('register.html')
+        
+        if User.query.filter_by(email=email).first():
+            if request.is_json:
+                return jsonify({'success': False, 'error': 'Email already exists'}), 400
+            flash('Email already exists')
+            return render_template('register.html')
+        
+        # Create new user
+        user = User(username=username, email=email)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        
+        login_user(user)
+        if request.is_json:
+            return jsonify({'success': True, 'message': 'Registration successful'})
+        return redirect(url_for('index'))
+    
+    return render_template('register.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    """Logout"""
+    logout_user()
+    return redirect(url_for('login'))
+
 @app.route('/api/chat', methods=['POST'])
+@login_required
 def chat():
     """Handle chat messages and return responses from Looker agent"""
     try:
@@ -139,33 +259,34 @@ def clear_chat():
         return jsonify({'error': 'Failed to clear chat history'}), 500
 
 @app.route('/api/settings', methods=['POST'])
+@login_required
 def save_settings():
-    """Save Looker configuration settings"""
+    """Save Looker configuration settings to user profile"""
     try:
         data = request.get_json()
         if not data:
             return jsonify({'error': 'No settings data provided'}), 400
         
-        # Update environment variables for this session
+        # Update user's credentials in database
         if data.get('lookerBaseUrl'):
-            os.environ['LOOKER_BASE_URL'] = data['lookerBaseUrl']
+            current_user.looker_base_url = data['lookerBaseUrl']
         if data.get('lookerClientId'):
-            os.environ['LOOKER_CLIENT_ID'] = data['lookerClientId']
+            current_user.looker_client_id = data['lookerClientId']
         if data.get('lookerClientSecret'):
-            os.environ['LOOKER_CLIENT_SECRET'] = data['lookerClientSecret']
+            current_user.looker_client_secret = data['lookerClientSecret']
         if data.get('openaiApiKey'):
-            os.environ['OPENAI_API_KEY'] = data['openaiApiKey']
+            current_user.openai_api_key = data['openaiApiKey']
         if data.get('lookmlModelName'):
-            os.environ['LOOKML_MODEL_NAME'] = data['lookmlModelName']
+            current_user.lookml_model_name = data['lookmlModelName']
         
-        # Set JDBC driver path
-        os.environ['JDBC_DRIVER_PATH'] = '/home/runner/workspace/drivers/looker-jdbc.jar'
+        # Save to database
+        db.session.commit()
         
         # Reinitialize the chat agent with new settings
         global chat_agent
         try:
-            chat_agent = LookerChatAgent()
-            app.logger.info("Chat agent reinitialized with new settings")
+            chat_agent = get_or_create_agent()
+            app.logger.info("Chat agent reinitialized with new user settings")
         except Exception as e:
             app.logger.warning(f"Failed to reinitialize chat agent: {e}")
             chat_agent = None

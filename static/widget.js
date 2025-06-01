@@ -23,7 +23,7 @@ class LookerChatWidget {
     init() {
         this.createWidget();
         this.attachEventListeners();
-        this.loadChatHistory();
+        // Don't load chat history - we want fresh sessions each time
     }
     
     createWidget() {
@@ -226,6 +226,8 @@ class LookerChatWidget {
         
         // Load saved settings on init
         this.loadSettings();
+        
+        // Don't load chat history - we want fresh sessions each time
     }
     
     toggleChat() {

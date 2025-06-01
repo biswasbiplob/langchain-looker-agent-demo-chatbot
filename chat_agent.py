@@ -37,6 +37,7 @@ class LookerChatAgent:
         """Initialize the actual Looker agent"""
         try:
             from langchain_looker_agent import create_looker_sql_agent, LookerSQLDatabase, LookerSQLToolkit
+            from langchain_openai import OpenAI
             
             # Initialize the Looker database connection
             self.looker_db = LookerSQLDatabase(
@@ -47,11 +48,18 @@ class LookerChatAgent:
                 jdbc_driver_path=self.jdbc_driver_path
             )
             
+            # Initialize the OpenAI LLM
+            self.llm = OpenAI(
+                api_key=self.openai_api_key,
+                temperature=0
+            )
+            
             # Create the Looker SQL toolkit
-            toolkit = LookerSQLToolkit(db=self.looker_db)
+            toolkit = LookerSQLToolkit(db=self.looker_db, llm=self.llm)
             
             # Create the Looker SQL agent
             self.agent = create_looker_sql_agent(
+                llm=self.llm,
                 toolkit=toolkit,
                 verbose=True
             )
@@ -163,6 +171,12 @@ Please configure these credentials to start analyzing your data!"""
             True if connection is successful, False otherwise
         """
         try:
+            if not self.credentials_available:
+                return False
+                
+            if self.agent is None:
+                return False
+                
             # Try a simple query to test connection
             test_response = self.agent.run("What data sources are available?")
             return bool(test_response)

@@ -48,10 +48,12 @@ class LookerChatAgent:
                 jdbc_driver_path=self.jdbc_driver_path
             )
             
-            # Initialize the OpenAI LLM
+            # Initialize the OpenAI LLM with a model that supports larger context
             self.llm = OpenAI(
                 api_key=self.openai_api_key,
-                temperature=0
+                temperature=0,
+                model="gpt-3.5-turbo-instruct",
+                max_tokens=1000
             )
             
             # Create the Looker SQL toolkit

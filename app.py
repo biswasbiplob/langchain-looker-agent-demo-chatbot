@@ -36,8 +36,19 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
 # Initialize the app with the extension
 db.init_app(app)
 
-# Initialize chat agent
-chat_agent = LookerChatAgent()
+# Initialize chat agent (will be None if credentials not available)
+chat_agent = None
+
+def get_or_create_agent():
+    """Get existing agent or create new one if credentials are available"""
+    global chat_agent
+    if chat_agent is None or not chat_agent.credentials_available:
+        try:
+            chat_agent = LookerChatAgent()
+        except Exception as e:
+            app.logger.warning(f"Could not initialize chat agent: {e}")
+            chat_agent = None
+    return chat_agent
 
 @app.route('/')
 def index():
@@ -67,7 +78,14 @@ def chat():
         
         # Get response from Looker agent
         try:
-            response = chat_agent.get_response(user_message, session['chat_history'])
+            agent = get_or_create_agent()
+            if agent is None:
+                return jsonify({
+                    'error': 'Looker configuration not available. Please configure your credentials in settings.',
+                    'status': 'error'
+                }), 400
+            
+            response = agent.get_response(user_message, session['chat_history'])
             
             # Add to chat history
             session['chat_history'].append({
@@ -141,6 +159,7 @@ def save_settings():
             app.logger.info("Chat agent reinitialized with new settings")
         except Exception as e:
             app.logger.warning(f"Failed to reinitialize chat agent: {e}")
+            chat_agent = None
         
         return jsonify({'status': 'success', 'message': 'Settings saved successfully'})
         
@@ -148,11 +167,31 @@ def save_settings():
         app.logger.error(f"Settings save error: {str(e)}")
         return jsonify({'error': 'Failed to save settings'}), 500
 
+@app.route('/api/get-settings', methods=['GET'])
+def get_settings():
+    """Get current settings from environment variables"""
+    try:
+        settings = {
+            'lookerBaseUrl': os.environ.get('LOOKER_BASE_URL', ''),
+            'lookerClientId': os.environ.get('LOOKER_CLIENT_ID', ''),
+            'lookerClientSecret': '***' if os.environ.get('LOOKER_CLIENT_SECRET') else '',
+            'openaiApiKey': '***' if os.environ.get('OPENAI_API_KEY') else '',
+            'lookmlModelName': os.environ.get('LOOKML_MODEL_NAME', '')
+        }
+        return jsonify(settings)
+    except Exception as e:
+        app.logger.error(f"Get settings error: {str(e)}")
+        return jsonify({'error': 'Failed to get settings'}), 500
+
 @app.route('/api/test-connection', methods=['POST'])
 def test_connection():
     """Test the Looker connection"""
     try:
-        if chat_agent.test_connection():
+        agent = get_or_create_agent()
+        if agent is None:
+            return jsonify({'success': False, 'error': 'No agent available - check your credentials'})
+        
+        if agent.test_connection():
             return jsonify({'success': True, 'message': 'Connection successful'})
         else:
             return jsonify({'success': False, 'error': 'Connection failed - check your credentials'})

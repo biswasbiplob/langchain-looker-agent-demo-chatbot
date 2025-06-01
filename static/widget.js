@@ -243,6 +243,9 @@ class LookerChatWidget {
         this.chatWindow.classList.add('chat-window-open');
         this.floatingButton.style.display = 'none';
         
+        // Clear previous session and start fresh
+        this.clearCurrentSession();
+        
         // Focus input
         setTimeout(() => {
             const input = this.chatWindow.querySelector('.chat-input');
@@ -254,6 +257,9 @@ class LookerChatWidget {
         this.isOpen = false;
         this.isMinimized = false;
         this.chatWindow.classList.remove('chat-window-open');
+        
+        // Clear the session on close
+        this.clearServerSession();
         
         setTimeout(() => {
             this.chatWindow.style.display = 'none';
@@ -446,24 +452,41 @@ class LookerChatWidget {
         inputContainer.style.display = 'block';
     }
     
-    loadSettings() {
+    async loadSettings() {
         try {
-            const saved = localStorage.getItem('looker-chat-settings');
-            if (saved) {
-                const settings = JSON.parse(saved);
-                
-                const baseUrlInput = this.chatWindow.querySelector('#looker-base-url');
-                const clientIdInput = this.chatWindow.querySelector('#looker-client-id');
-                const clientSecretInput = this.chatWindow.querySelector('#looker-client-secret');
-                const openaiKeyInput = this.chatWindow.querySelector('#openai-api-key');
-                const modelNameInput = this.chatWindow.querySelector('#lookml-model-name');
-                
-                if (baseUrlInput) baseUrlInput.value = settings.lookerBaseUrl || '';
-                if (clientIdInput) clientIdInput.value = settings.lookerClientId || '';
-                if (clientSecretInput) clientSecretInput.value = settings.lookerClientSecret || '';
-                if (openaiKeyInput) openaiKeyInput.value = settings.openaiApiKey || '';
-                if (modelNameInput) modelNameInput.value = settings.lookmlModelName || '';
+            // Load settings from server first
+            const response = await fetch(`${this.options.apiBaseUrl}/api/get-settings`, {
+                method: 'GET',
+                credentials: 'include'
+            });
+            
+            let settings = {};
+            if (response.ok) {
+                settings = await response.json();
+            } else {
+                // Fallback to local storage if server request fails
+                const saved = localStorage.getItem('looker-chat-settings');
+                if (saved) {
+                    settings = JSON.parse(saved);
+                }
             }
+            
+            const baseUrlInput = this.chatWindow.querySelector('#looker-base-url');
+            const clientIdInput = this.chatWindow.querySelector('#looker-client-id');
+            const clientSecretInput = this.chatWindow.querySelector('#looker-client-secret');
+            const openaiKeyInput = this.chatWindow.querySelector('#openai-api-key');
+            const modelNameInput = this.chatWindow.querySelector('#lookml-model-name');
+            
+            if (baseUrlInput) baseUrlInput.value = settings.lookerBaseUrl || '';
+            if (clientIdInput) clientIdInput.value = settings.lookerClientId || '';
+            if (clientSecretInput && settings.lookerClientSecret !== '***') {
+                clientSecretInput.value = settings.lookerClientSecret || '';
+            }
+            if (openaiKeyInput && settings.openaiApiKey !== '***') {
+                openaiKeyInput.value = settings.openaiApiKey || '';
+            }
+            if (modelNameInput) modelNameInput.value = settings.lookmlModelName || '';
+            
         } catch (error) {
             console.warn('Failed to load settings:', error);
         }
@@ -541,13 +564,38 @@ class LookerChatWidget {
         }
     }
 
-    // Public methods for external control
-    clearHistory() {
+    // Session management methods
+    clearCurrentSession() {
+        // Clear local chat history
         this.chatHistory = [];
+        
+        // Clear messages from DOM (except welcome message)
         const messagesContainer = this.chatWindow.querySelector('#chat-messages');
         const messages = messagesContainer.querySelectorAll('.message:not(.welcome-message .message)');
         messages.forEach(msg => msg.remove());
-        this.saveChatHistory();
+        
+        // Don't save to session storage - we want fresh sessions
+    }
+    
+    async clearServerSession() {
+        // Clear server-side session
+        try {
+            await fetch(`${this.options.apiBaseUrl}/api/chat/clear`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include'
+            });
+        } catch (error) {
+            console.warn('Failed to clear server session:', error);
+        }
+    }
+
+    // Public methods for external control
+    clearHistory() {
+        this.clearCurrentSession();
+        this.clearServerSession();
     }
 }
 

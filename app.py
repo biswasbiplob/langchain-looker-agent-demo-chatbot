@@ -42,13 +42,22 @@ chat_agent = None
 def get_or_create_agent():
     """Get existing agent or create new one if credentials are available"""
     global chat_agent
-    if chat_agent is None or not chat_agent.credentials_available:
-        try:
-            chat_agent = LookerChatAgent()
-        except Exception as e:
-            app.logger.warning(f"Could not initialize chat agent: {e}")
-            chat_agent = None
-    return chat_agent
+    
+    # Check if we have the required credentials in environment
+    required_vars = ['LOOKER_BASE_URL', 'LOOKER_CLIENT_ID', 'LOOKER_CLIENT_SECRET', 'OPENAI_API_KEY', 'LOOKML_MODEL_NAME']
+    missing_vars = [var for var in required_vars if not os.environ.get(var)]
+    
+    if missing_vars:
+        app.logger.warning(f"Missing required environment variables: {missing_vars}")
+        return None
+    
+    # Always create a fresh agent to ensure latest credentials are used
+    try:
+        chat_agent = LookerChatAgent()
+        return chat_agent
+    except Exception as e:
+        app.logger.warning(f"Could not initialize chat agent: {e}")
+        return None
 
 @app.route('/')
 def index():

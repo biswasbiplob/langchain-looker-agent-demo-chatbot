@@ -231,7 +231,7 @@ class LookerChatWidget {
     }
     
     toggleChat() {
-        if (this.isOpen) {
+        if (this.isOpen && !this.isMinimized) {
             this.closeChat();
         } else {
             this.openChat();

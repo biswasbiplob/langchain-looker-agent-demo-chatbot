@@ -48,13 +48,13 @@ class LookerChatAgent:
                 jdbc_driver_path=self.jdbc_driver_path
             )
             
-            # Initialize the OpenAI LLM with GPT-4 for larger context window
+            # Initialize the OpenAI LLM with GPT-4o for much larger context window
             from langchain_openai import ChatOpenAI
             self.llm = ChatOpenAI(
                 api_key=self.openai_api_key,
                 temperature=0,
-                model="gpt-4",
-                max_tokens=1000
+                model="gpt-4o",
+                max_tokens=2000
             )
             
             # Create the Looker SQL toolkit

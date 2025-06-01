@@ -299,13 +299,27 @@ class LookerChatWidget {
             
             if (response.error) {
                 this.addMessage(response.error, 'assistant', 'error');
-            } else {
+            } else if (response.response) {
                 this.addMessage(response.response, 'assistant');
+            } else {
+                console.error('Unexpected response format:', response);
+                this.addMessage('I received an unexpected response format. Please try again.', 'assistant', 'error');
             }
         } catch (error) {
             this.hideLoading();
             console.error('Chat error:', error);
-            this.addMessage('Sorry, I encountered an error. Please try again later.', 'assistant', 'error');
+            
+            // Try to get more detailed error information
+            if (error.response) {
+                try {
+                    const errorData = await error.response.json();
+                    this.addMessage(errorData.error || 'Sorry, I encountered an error. Please try again later.', 'assistant', 'error');
+                } catch (parseError) {
+                    this.addMessage('Sorry, I encountered an error. Please try again later.', 'assistant', 'error');
+                }
+            } else {
+                this.addMessage('Sorry, I encountered an error. Please try again later.', 'assistant', 'error');
+            }
         }
         
         // Save chat history

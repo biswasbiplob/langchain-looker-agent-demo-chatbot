@@ -102,7 +102,8 @@ class LookerChatAgent:
             
             # Get response from Looker agent
             if self.agent is not None:
-                response = self.agent.run(full_message)
+                result = self.agent.invoke({"input": full_message})
+                response = result.get("output", str(result)) if isinstance(result, dict) else str(result)
             else:
                 return "Agent not properly initialized. Please check your Looker configuration."
             
@@ -178,8 +179,8 @@ Please configure these credentials to start analyzing your data!"""
                 return False
                 
             # Try a simple query to test connection
-            test_response = self.agent.run("What data sources are available?")
-            return bool(test_response)
+            result = self.agent.invoke({"input": "What data sources are available?"})
+            return bool(result)
         except Exception as e:
             logging.error(f"Looker connection test failed: {e}")
             return False

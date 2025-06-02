@@ -134,17 +134,19 @@ Add this code snippet to any webpage to embed the chatbot:
 
 ```html
 <!-- CSS -->
-<link rel="stylesheet" href="https://your-domain.com/static/widget.css">
+<link rel="stylesheet" href="https://your-chatbot-server.replit.app/static/widget.css">
 
 <!-- JavaScript -->
-<script src="https://your-domain.com/static/widget.js"></script>
+<script src="https://your-chatbot-server.replit.app/static/widget.js"></script>
 <script>
   // Initialize the widget
   const chatWidget = new LookerChatWidget({
-    apiBaseUrl: 'https://your-domain.com'
+    apiBaseUrl: 'https://your-chatbot-server.replit.app'
   });
 </script>
 ```
+
+**Important**: Replace `your-chatbot-server.replit.app` with the actual URL where your chatbot server is hosted. This should NOT be your website's domain unless you're hosting the chatbot there.
 
 ### Customization Options
 
@@ -186,6 +188,12 @@ const chatWidget = new LookerChatWidget({
 ## 🐛 Troubleshooting
 
 ### Common Issues
+
+**404 Errors When Using Widget on External Website**
+- The most common issue: Make sure the `apiBaseUrl` in your widget initialization points to your chatbot server, not your website
+- Correct example: `apiBaseUrl: 'https://your-chatbot-server.replit.app'`
+- Incorrect: `apiBaseUrl: 'https://your-website.com'` (unless the chatbot is hosted there)
+- Check browser console for "404 Not Found" errors on `/api/chat` endpoint
 
 **Connection Failed to Looker**
 - Verify your Looker credentials in the settings panel

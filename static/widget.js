@@ -334,20 +334,30 @@ class LookerChatWidget {
     }
     
     async sendToAPI(message) {
-        const response = await fetch(`${this.options.apiBaseUrl}/api/chat`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            body: JSON.stringify({ message })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        try {
+            const response = await fetch(`${this.options.apiBaseUrl}/api/chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify({ message })
+            });
+            
+            if (!response.ok) {
+                if (response.status === 404) {
+                    throw new Error('Chatbot API not found. Please check that the apiBaseUrl is correct and points to your chatbot server.');
+                }
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            return await response.json();
+        } catch (error) {
+            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                throw new Error('Unable to connect to chatbot server. Please check your internet connection and that the API URL is correct.');
+            }
+            throw error;
         }
-        
-        return await response.json();
     }
     
     addMessage(content, sender, type = 'normal') {
@@ -534,21 +544,30 @@ class LookerChatWidget {
             // Save to local storage
             localStorage.setItem('looker-chat-settings', JSON.stringify(settings));
             
-            // Send to server to update configuration
-            const response = await fetch(`${this.options.apiBaseUrl}/api/settings`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'include',
-                body: JSON.stringify(settings)
-            });
-            
-            if (response.ok) {
-                this.addMessage('Configuration saved successfully! You can now start asking data questions.', 'assistant');
+            // Try to send to server to update configuration
+            try {
+                const response = await fetch(`${this.options.apiBaseUrl}/api/settings`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(settings)
+                });
+                
+                if (response.ok) {
+                    this.addMessage('Configuration saved successfully! You can now start asking data questions.', 'assistant');
+                    this.closeSettings();
+                } else if (response.status === 404) {
+                    this.addMessage('Configuration saved locally only. Server settings endpoint not available.', 'assistant');
+                    this.closeSettings();
+                } else {
+                    throw new Error('Failed to save configuration to server');
+                }
+            } catch (serverError) {
+                console.warn('Server save failed, using local storage only:', serverError);
+                this.addMessage('Configuration saved locally. You can now start asking data questions.', 'assistant');
                 this.closeSettings();
-            } else {
-                throw new Error('Failed to save configuration');
             }
         } catch (error) {
             console.error('Settings save error:', error);

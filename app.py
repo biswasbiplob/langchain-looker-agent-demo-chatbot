@@ -10,6 +10,7 @@ from chat_agent import LookerChatAgent
 
 # Set up Java environment for JDBC driver
 os.environ['JAVA_HOME'] = '/nix/store/1jm9fvrqrry22z9kgqa0v55nnz0jsk09-openjdk-11.0.23+9/lib/openjdk'
+os.environ['JDBC_DRIVER_PATH'] = '/home/runner/workspace/attached_assets/looker-jdbc.jar'
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)

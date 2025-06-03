@@ -371,30 +371,34 @@ def save_settings():
         if not data:
             return jsonify({'error': 'No settings data provided'}), 400
         
-        # Update user's credentials in database
-        if data.get('lookerBaseUrl'):
-            current_user.looker_base_url = data['lookerBaseUrl']
-        if data.get('lookerClientId'):
-            current_user.looker_client_id = data['lookerClientId']
-        if data.get('lookerClientSecret'):
-            current_user.looker_client_secret = data['lookerClientSecret']
-        if data.get('openaiApiKey'):
-            current_user.openai_api_key = data['openaiApiKey']
-        if data.get('lookmlModelName'):
-            current_user.lookml_model_name = data['lookmlModelName']
+        # For authenticated users, save to database
+        if current_user.is_authenticated:
+            # Update user's credentials in database
+            if data.get('lookerBaseUrl'):
+                current_user.looker_base_url = data['lookerBaseUrl']
+            if data.get('lookerClientId'):
+                current_user.looker_client_id = data['lookerClientId']
+            if data.get('lookerClientSecret'):
+                current_user.looker_client_secret = data['lookerClientSecret']
+            if data.get('openaiApiKey'):
+                current_user.openai_api_key = data['openaiApiKey']
+            if data.get('lookmlModelName'):
+                current_user.lookml_model_name = data['lookmlModelName']
+            
+            # Save to database
+            db.session.commit()
+            
+            # Reinitialize the chat agent with new settings
+            global chat_agent
+            try:
+                chat_agent = get_or_create_agent()
+                app.logger.info("Chat agent reinitialized with new user settings")
+            except Exception as e:
+                app.logger.warning(f"Failed to reinitialize chat agent: {e}")
+                chat_agent = None
         
-        # Save to database
-        db.session.commit()
-        
-        # Reinitialize the chat agent with new settings
-        global chat_agent
-        try:
-            chat_agent = get_or_create_agent()
-            app.logger.info("Chat agent reinitialized with new user settings")
-        except Exception as e:
-            app.logger.warning(f"Failed to reinitialize chat agent: {e}")
-            chat_agent = None
-        
+        # For widget usage (unauthenticated), just acknowledge the settings
+        # The actual settings are handled via localStorage on the client side
         return jsonify({'status': 'success', 'message': 'Settings saved successfully'})
         
     except Exception as e:

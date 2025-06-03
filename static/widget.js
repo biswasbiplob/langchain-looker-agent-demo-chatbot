@@ -3,6 +3,10 @@
  * This script creates a floating chat widget that can be embedded on any website
  */
 
+// Ensure the widget class is properly exported to global scope
+(function(window) {
+    'use strict';
+
 class LookerChatWidget {
     constructor(options = {}) {
         // Ensure apiBaseUrl is explicitly set and not defaulting to current domain
@@ -698,7 +702,12 @@ if (typeof module === 'undefined') {
     }
 }
 
+// Export to global scope for external websites
+window.LookerChatWidget = LookerChatWidget;
+
 // Export for module usage
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = LookerChatWidget;
 }
+
+})(window);

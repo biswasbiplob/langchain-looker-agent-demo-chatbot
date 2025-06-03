@@ -5,6 +5,13 @@
 
 class LookerChatWidget {
     constructor(options = {}) {
+        // Ensure apiBaseUrl is explicitly set and not defaulting to current domain
+        if (!options.apiBaseUrl) {
+            console.error('ERROR: apiBaseUrl is required for cross-domain widget usage!');
+            console.error('Please set apiBaseUrl in widget initialization like:');
+            console.error('new LookerChatWidget({ apiBaseUrl: "https://your-chatbot-server.replit.app" })');
+        }
+        
         this.options = {
             apiBaseUrl: options.apiBaseUrl || window.location.origin,
             position: options.position || 'bottom-right',
@@ -14,6 +21,7 @@ class LookerChatWidget {
         
         // Debug log to verify the API base URL
         console.log('Looker Chat Widget initialized with API base URL:', this.options.apiBaseUrl);
+        console.log('Current page domain:', window.location.origin);
         
         this.isOpen = false;
         this.isMinimized = false;

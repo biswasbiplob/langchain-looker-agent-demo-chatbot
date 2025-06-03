@@ -599,12 +599,16 @@ class LookerChatWidget {
             testBtn.disabled = true;
             testBtn.textContent = 'Testing...';
             
+            // Get locally stored settings for widget usage
+            const localSettings = this.getLocalSettings();
+            
             const response = await fetch(`${this.options.apiBaseUrl}/api/test-connection`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                credentials: 'include'
+                credentials: 'include',
+                body: JSON.stringify({ settings: localSettings })
             });
             
             const result = await response.json();

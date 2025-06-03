@@ -406,30 +406,84 @@ def save_settings():
         return jsonify({'error': 'Failed to save settings'}), 500
 
 @app.route('/api/get-settings', methods=['GET'])
-@login_required
 def get_settings():
     """Get current settings from user profile"""
     try:
-        settings = {
-            'lookerBaseUrl': current_user.looker_base_url or '',
-            'lookerClientId': current_user.looker_client_id or '',
-            'lookerClientSecret': '***' if current_user.looker_client_secret else '',
-            'openaiApiKey': '***' if current_user.openai_api_key else '',
-            'lookmlModelName': current_user.lookml_model_name or ''
-        }
-        return jsonify(settings)
+        # For authenticated users, return their saved settings
+        if current_user.is_authenticated:
+            settings = {
+                'lookerBaseUrl': current_user.looker_base_url or '',
+                'lookerClientId': current_user.looker_client_id or '',
+                'lookerClientSecret': '***' if current_user.looker_client_secret else '',
+                'openaiApiKey': '***' if current_user.openai_api_key else '',
+                'lookmlModelName': current_user.lookml_model_name or ''
+            }
+            return jsonify(settings)
+        else:
+            # For widget usage, return empty settings (will use localStorage)
+            return jsonify({
+                'lookerBaseUrl': '',
+                'lookerClientId': '',
+                'lookerClientSecret': '',
+                'openaiApiKey': '',
+                'lookmlModelName': ''
+            })
     except Exception as e:
         app.logger.error(f"Get settings error: {str(e)}")
         return jsonify({'error': 'Failed to get settings'}), 500
 
 @app.route('/api/test-connection', methods=['POST'])
-@login_required
 def test_connection():
     """Test the Looker connection"""
     try:
-        agent = get_or_create_agent()
+        data = request.get_json() or {}
+        
+        # Try to get agent for authenticated users first
+        agent = None
+        if current_user.is_authenticated:
+            agent = get_or_create_agent()
+        
+        # If no authenticated user or no agent, try widget settings
+        if not agent:
+            widget_settings = data.get('settings', {})
+            if widget_settings:
+                try:
+                    # Create temporary agent with provided settings
+                    temp_env = {}
+                    for key, value in widget_settings.items():
+                        if key == 'lookerBaseUrl':
+                            temp_env['LOOKER_BASE_URL'] = value
+                        elif key == 'lookerClientId':
+                            temp_env['LOOKER_CLIENT_ID'] = value
+                        elif key == 'lookerClientSecret':
+                            temp_env['LOOKER_CLIENT_SECRET'] = value
+                        elif key == 'openaiApiKey':
+                            temp_env['OPENAI_API_KEY'] = value
+                        elif key == 'lookmlModelName':
+                            temp_env['LOOKML_MODEL_NAME'] = value
+                    
+                    # Backup current env vars
+                    backup_env = {}
+                    for env_key in temp_env:
+                        backup_env[env_key] = os.environ.get(env_key)
+                        os.environ[env_key] = temp_env[env_key]
+                    
+                    # Create agent with temporary settings
+                    from chat_agent import LookerChatAgent
+                    agent = LookerChatAgent()
+                    
+                    # Restore environment
+                    for env_key, backup_value in backup_env.items():
+                        if backup_value is None:
+                            os.environ.pop(env_key, None)
+                        else:
+                            os.environ[env_key] = backup_value
+                            
+                except Exception as e:
+                    app.logger.error(f"Failed to create agent for connection test: {e}")
+        
         if agent is None:
-            return jsonify({'success': False, 'error': 'No agent available - check your credentials'})
+            return jsonify({'success': False, 'error': 'No credentials available - configure your settings first'})
         
         if agent.test_connection():
             return jsonify({'success': True, 'message': 'Connection successful'})

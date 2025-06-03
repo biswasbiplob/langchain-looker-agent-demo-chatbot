@@ -134,14 +134,13 @@ Add this code snippet to any webpage to embed the chatbot:
 
 ```html
 <!-- CSS -->
-<link rel="stylesheet" href="https://your-chatbot-server.replit.app/static/widget.css">
+<link rel="stylesheet" href="https://your-domain.com/static/widget.css">
 
 <!-- JavaScript -->
-<script src="https://your-chatbot-server.replit.app/static/widget.js"></script>
+<script src="https://your-domain.com/static/widget.js"></script>
 <script>
-  // Initialize the widget
   const chatWidget = new LookerChatWidget({
-    apiBaseUrl: 'https://your-chatbot-server.replit.app'
+    apiBaseUrl: 'https://your-domain.com'
   });
 </script>
 ```

@@ -252,7 +252,6 @@ def api_logout():
     return jsonify({'success': True, 'message': 'Logged out successfully'})
 
 @app.route('/api/chat', methods=['POST'])
-@login_required
 def chat():
     """Handle chat messages and return responses from Looker agent"""
     try:
@@ -270,10 +269,53 @@ def chat():
         
         # Get response from Looker agent
         try:
-            agent = get_or_create_agent()
+            # Try to get agent for authenticated users first
+            agent = None
+            if current_user.is_authenticated:
+                agent = get_or_create_agent()
+            
+            # If no authenticated user or no agent, try widget settings
+            if not agent:
+                widget_settings = data.get('settings', {})
+                if widget_settings:
+                    try:
+                        # Create temporary agent with provided settings
+                        temp_env = {}
+                        for key, value in widget_settings.items():
+                            if key == 'lookerBaseUrl':
+                                temp_env['LOOKER_BASE_URL'] = value
+                            elif key == 'lookerClientId':
+                                temp_env['LOOKER_CLIENT_ID'] = value
+                            elif key == 'lookerClientSecret':
+                                temp_env['LOOKER_CLIENT_SECRET'] = value
+                            elif key == 'openaiApiKey':
+                                temp_env['OPENAI_API_KEY'] = value
+                            elif key == 'lookmlModelName':
+                                temp_env['LOOKML_MODEL_NAME'] = value
+                        
+                        # Backup current env vars
+                        backup_env = {}
+                        for env_key in temp_env:
+                            backup_env[env_key] = os.environ.get(env_key)
+                            os.environ[env_key] = temp_env[env_key]
+                        
+                        # Create agent with temporary settings
+                        from chat_agent import LookerChatAgent
+                        agent = LookerChatAgent()
+                        
+                        # Restore environment
+                        for env_key, backup_value in backup_env.items():
+                            if backup_value is None:
+                                os.environ.pop(env_key, None)
+                            else:
+                                os.environ[env_key] = backup_value
+                                
+                    except Exception as e:
+                        app.logger.error(f"Failed to create agent with widget settings: {e}")
+            
             if agent is None:
                 return jsonify({
-                    'error': 'Looker configuration not available. Please configure your credentials in settings.',
+                    'error': 'Please configure your Looker and OpenAI credentials in the settings panel first.',
                     'status': 'error'
                 }), 400
             
@@ -322,7 +364,6 @@ def clear_chat():
         return jsonify({'error': 'Failed to clear chat history'}), 500
 
 @app.route('/api/settings', methods=['POST'])
-@login_required
 def save_settings():
     """Save Looker configuration settings to user profile"""
     try:

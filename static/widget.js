@@ -335,13 +335,21 @@ class LookerChatWidget {
     
     async sendToAPI(message) {
         try {
+            // Get locally stored settings for widget usage
+            const localSettings = this.getLocalSettings();
+            
+            const requestBody = { 
+                message,
+                settings: localSettings
+            };
+            
             const response = await fetch(`${this.options.apiBaseUrl}/api/chat`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 credentials: 'include',
-                body: JSON.stringify({ message })
+                body: JSON.stringify(requestBody)
             });
             
             if (!response.ok) {
@@ -357,6 +365,16 @@ class LookerChatWidget {
                 throw new Error('Unable to connect to chatbot server. Please check your internet connection and that the API URL is correct.');
             }
             throw error;
+        }
+    }
+    
+    getLocalSettings() {
+        try {
+            const saved = localStorage.getItem('looker-chat-settings');
+            return saved ? JSON.parse(saved) : {};
+        } catch (error) {
+            console.warn('Failed to get local settings:', error);
+            return {};
         }
     }
     

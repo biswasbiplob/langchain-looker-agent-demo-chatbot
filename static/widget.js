@@ -8,9 +8,12 @@ class LookerChatWidget {
         this.options = {
             apiBaseUrl: options.apiBaseUrl || window.location.origin,
             position: options.position || 'bottom-right',
-            theme: options.theme || 'dark',
+            theme: options.theme || 'light',
             ...options
         };
+        
+        // Debug log to verify the API base URL
+        console.log('Looker Chat Widget initialized with API base URL:', this.options.apiBaseUrl);
         
         this.isOpen = false;
         this.isMinimized = false;
@@ -21,6 +24,12 @@ class LookerChatWidget {
     }
     
     init() {
+        // Check if widget already exists to prevent duplicates
+        if (document.getElementById('looker-chat-widget')) {
+            console.warn('Looker chat widget already initialized');
+            return;
+        }
+        
         this.createWidget();
         this.attachEventListeners();
         // Don't load chat history - we want fresh sessions each time
@@ -343,7 +352,10 @@ class LookerChatWidget {
                 settings: localSettings
             };
             
-            const response = await fetch(`${this.options.apiBaseUrl}/api/chat`, {
+            const apiUrl = `${this.options.apiBaseUrl}/api/chat`;
+            console.log('Sending chat request to:', apiUrl);
+            
+            const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -564,7 +576,10 @@ class LookerChatWidget {
             
             // Try to send to server to update configuration
             try {
-                const response = await fetch(`${this.options.apiBaseUrl}/api/settings`, {
+                const settingsUrl = `${this.options.apiBaseUrl}/api/settings`;
+                console.log('Sending settings to:', settingsUrl);
+                
+                const response = await fetch(settingsUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

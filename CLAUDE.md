@@ -13,6 +13,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Reset Database**: Remove `instance/chatbot.db` file and reinitialize
 - **Database Migrations**: Tables are auto-created on app startup, including new caching tables
 
+### Cache Population (Important for Complete Dashboard Coverage)
+The system caches Looker metadata (models, explores, dashboards) in the database for improved performance and search accuracy. **For production deployments, you should populate the complete cache to ensure ALL dashboards are discoverable.**
+
+#### Comprehensive Cache Population
+- **Populate All Caches**: `python populate_cache.py --all` (recommended for initial setup)
+- **Populate Specific Cache**: 
+  - Models only: `python populate_cache.py --models`
+  - Explores only: `python populate_cache.py --explores`  
+  - Dashboards only: `python populate_cache.py --dashboards`
+- **Force Refresh**: `python populate_cache.py --all --force` (ignores 24-hour cache TTL)
+- **Verbose Output**: `python populate_cache.py --all --verbose` (detailed logging)
+
+#### Why Use Cache Population?
+- **Complete Dashboard Coverage**: Real-time queries only fetch first ~100 dashboards due to timeout constraints
+- **Better Search Accuracy**: Pre-cached metadata enables sophisticated dashboard matching and business context analysis  
+- **Production Performance**: Separates heavy data fetching from real-time user interactions
+- **Scheduled Updates**: Run daily via cron to keep cache fresh: `0 2 * * * cd /path/to/app && python populate_cache.py --all`
+
+#### Cache Population Schedule
+```bash
+# Add to crontab for daily refresh at 2 AM
+0 2 * * * cd /path/to/chatbot && /path/to/python populate_cache.py --all >> /var/log/looker_cache.log 2>&1
+```
+
+**⚠️ Important**: Cache population automatically loads environment variables from your `.env` file. Ensure your `.env` file contains: LOOKER_BASE_URL, LOOKER_CLIENT_ID, LOOKER_CLIENT_SECRET, OPENAI_API_KEY.
+
 ### Dependencies
 - **Install**: `uv sync` or `pip install -r requirements.txt`
 - **Using UV**: This project is configured for UV package manager (see pyproject.toml)
@@ -151,15 +177,20 @@ Optional:
 #### Issue: Dashboard queries return wrong/irrelevant dashboards
 **Root Cause**: Target dashboard not being found or scored properly
 **Solutions**:
-1. **Check Dashboard Fetching**: Verify the target dashboard is being retrieved from Looker API
-   - Look for log message: `Key dashboard found - ID: {target_id}, Title: '{title}', Folder: '{folder}'`
+1. **🔧 RECOMMENDED FIX: Use Complete Cache Population**
+   - Run `python populate_cache.py --dashboards --force` to cache ALL dashboards
+   - This eliminates the 100-dashboard limit that causes missing results
+   - Schedule daily: `0 2 * * * cd /path/to/app && python populate_cache.py --all`
+
+2. **Check Dashboard Fetching**: Verify the target dashboard is being retrieved from Looker API
+   - Look for log message: `Key dashboard found - ID: {target_id}, Title: '{title}', Folder: '{folder}'`  
    - If missing, dashboard may be beyond the 100-dashboard fetch limit or have access restrictions
 
-2. **Debug Dashboard Scoring**: Check logs for dashboard scoring information  
+3. **Debug Dashboard Scoring**: Check logs for dashboard scoring information  
    - Look for: `Dashboard '{title}' scored {score} - {reason}`
    - Scores above 80 indicate high relevance, above 40 medium relevance
 
-3. **Verify Keywords**: Ensure query keywords match dashboard titles/descriptions
+4. **Verify Keywords**: Ensure query keywords match dashboard titles/descriptions
    - "bi-weekly" should match dashboards with "bi-weekly", "biweekly", or "bi weekly" in title
    - "cost" should match dashboards with "cost", "finops", "billing", "finance" terms
 
@@ -171,15 +202,26 @@ Optional:
 3. **Domain-Specific Logic**: Recognizes cost, experiment, and analytics domains from titles alone
 
 #### Issue: Specific dashboard (e.g., ID 2659) not appearing in results
+**🔧 RECOMMENDED FIX**: Run `python populate_cache.py --dashboards --force` to cache ALL dashboards from your Looker instance.
+
 **Debugging Steps**:
-1. Check if dashboard is being fetched: Look for log `Key dashboard found - ID: 2659`
-2. If not found, dashboard may be:
-   - Beyond fetch limit (increase limit in get_available_dashboards)
+1. **First, populate complete cache**: `python populate_cache.py --dashboards --force`
+2. Check if dashboard is being fetched: Look for log `Key dashboard found - ID: 2659`
+3. If still not found after cache population, dashboard may be:
    - In a restricted folder/space
    - Not accessible with current user permissions
-3. If found but not in top results, check scoring logs to see why it scored low
+   - Deleted or moved in Looker
+4. If found but not in top results, check scoring logs to see why it scored low
 
 ### Performance Optimization
-- Dashboard fetching limited to 100 dashboards to prevent API timeouts
-- 24-hour database caching reduces API calls
-- Comprehensive error handling ensures graceful degradation
+- **Real-time queries**: Dashboard fetching limited to ~100 dashboards to prevent API timeouts
+- **Background cache population**: `populate_cache.py` script fetches ALL dashboards without timeout constraints
+- **24-hour database caching**: Reduces API calls and improves response times
+- **Scheduled refresh**: Daily cache population ensures fresh data without affecting user experience
+- **Comprehensive error handling**: Graceful degradation when cache or API issues occur
+
+### Cache Population Best Practices
+1. **Initial Setup**: Run `python populate_cache.py --all` after deployment
+2. **Production Schedule**: Set up daily cron job for cache refresh
+3. **Monitoring**: Check logs for cache population success/failures
+4. **Troubleshooting**: Use `--force` flag to bypass cache TTL when debugging

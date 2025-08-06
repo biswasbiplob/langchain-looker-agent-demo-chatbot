@@ -1569,6 +1569,11 @@ REASONING: Brief explanation of why these explores match the question"""
             
             user_message_lower = user_message.lower().strip()
             
+            # Handle dashboard-specific queries (NEW - highest priority)
+            if any(keyword in user_message_lower for keyword in ['dashboard', 'dashboards']) and \
+               any(keyword in user_message_lower for keyword in ['for', 'about', 'show', 'find', 'there']):
+                return self._handle_dashboard_query(user_message)
+            
             # Handle specific explore information requests first (more specific)
             if any(keyword in user_message_lower for keyword in ['dimensions', 'measures', 'fields']) or \
                ('explore' in user_message_lower and any(keyword in user_message_lower for keyword in ['info', 'about', 'describe'])):
@@ -1637,6 +1642,123 @@ REASONING: Brief explanation of why these explores match the question"""
         except Exception as e:
             logging.error(f"Error handling models request: {e}")
             return "I couldn't retrieve the list of available models. Please try again later."
+    
+    def _handle_dashboard_query(self, user_message: str) -> str:
+        """Handle queries specifically asking about dashboards (e.g., 'is there a dashboard for X?')"""
+        try:
+            logging.info(f"Handling dashboard-specific query: '{user_message}'")
+            
+            # Get all available dashboards
+            dashboards = self.get_available_dashboards()
+            
+            if not dashboards:
+                return "I couldn't retrieve any dashboards at the moment. This might be due to permissions or connectivity issues. Please check with your Looker administrator."
+            
+            # Extract query keywords for matching
+            query_keywords = self._extract_query_keywords(user_message)
+            
+            # Score dashboards using enhanced similarity with high description weighting
+            scored_dashboards = []
+            
+            for dashboard in dashboards:
+                score = self._calculate_enhanced_similarity_score(
+                    user_message,
+                    dashboard.get('title', ''),
+                    dashboard.get('description', ''),
+                    query_keywords,
+                    description_weight=10.0  # Very high weight for dashboard descriptions
+                )
+                
+                if score > 0:
+                    dashboard_info = {
+                        'dashboard': dashboard,
+                        'score': score,
+                        'title': dashboard.get('title', ''),
+                        'description': dashboard.get('description', ''),
+                        'folder': dashboard.get('folder', ''),
+                        'explore_refs': dashboard.get('explore_references', [])
+                    }
+                    scored_dashboards.append(dashboard_info)
+            
+            # Sort by score and get top matches
+            scored_dashboards.sort(key=lambda x: x['score'], reverse=True)
+            top_dashboards = scored_dashboards[:5]
+            
+            if not top_dashboards:
+                return f"I couldn't find any dashboards that match '{user_message}'. You might want to try different keywords or check if the dashboard you're looking for exists in your Looker instance."
+            
+            # Build response with dashboard information
+            response = "📊 I found these relevant dashboards for your query:\n\n"
+            
+            for i, dash_info in enumerate(top_dashboards, 1):
+                dashboard = dash_info['dashboard']
+                title = dash_info['title'] or f"Dashboard {dashboard.get('id', 'Unknown')}"
+                description = dash_info['description'] or "No description available"
+                folder = dash_info['folder']
+                
+                # Generate dashboard URL
+                dashboard_url = self._generate_dashboard_url(dashboard.get('id', ''))
+                
+                response += f"**{i}. {title}**"
+                if folder:
+                    response += f" _(in {folder})_"
+                response += "\n"
+                
+                # Add description
+                if description and len(description) > 10:
+                    response += f"   📝 {description[:120]}{'...' if len(description) > 120 else ''}\n"
+                
+                # Add URL
+                if dashboard_url:
+                    response += f"   🔗 **[Open Dashboard]({dashboard_url})**\n"
+                
+                # Add related explores for additional context
+                explore_refs = dash_info['explore_refs']
+                if explore_refs:
+                    response += f"   📊 Data from: {', '.join(explore_refs[:3])}"
+                    if len(explore_refs) > 3:
+                        response += f" (and {len(explore_refs) - 3} more)"
+                    response += "\n"
+                
+                response += "\n"
+            
+            # Add summary and suggestions
+            response += f"🎯 **Found {len(top_dashboards)} relevant dashboard{'s' if len(top_dashboards) != 1 else ''}** based on your query.\n\n"
+            
+            # Also suggest related explores for deeper analysis
+            all_explore_refs = set()
+            for dash_info in top_dashboards[:3]:  # Top 3 dashboards
+                all_explore_refs.update(dash_info['explore_refs'])
+            
+            if all_explore_refs:
+                response += f"💡 **For deeper analysis**, you can also explore the data directly using:\n"
+                response += f"📈 **Explores**: {', '.join(list(all_explore_refs)[:5])}\n"
+                if len(all_explore_refs) > 5:
+                    response += f"   (and {len(all_explore_refs) - 5} more related explores)\n"
+            
+            return response
+            
+        except Exception as e:
+            logging.error(f"Error handling dashboard query: {e}")
+            return "I encountered an error while searching for dashboards. Please try rephrasing your question or check if you have access to dashboards in your Looker instance."
+    
+    def _generate_dashboard_url(self, dashboard_id: str) -> str:
+        """Generate a complete URL for a Looker dashboard"""
+        try:
+            if not dashboard_id or not self.looker_base_url:
+                return ""
+            
+            # Remove trailing slash from base URL if present
+            base_url = self.looker_base_url.rstrip('/')
+            
+            # Construct dashboard URL
+            dashboard_url = f"{base_url}/dashboards/{dashboard_id}"
+            
+            return dashboard_url
+            
+        except Exception as e:
+            logging.warning(f"Error generating dashboard URL for {dashboard_id}: {e}")
+            return ""
     
     def _handle_specific_model_query(self, user_message: str) -> str:
         """Handle queries asking about specific model existence (e.g., 'is there a model called X?')"""

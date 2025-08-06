@@ -63,6 +63,13 @@ def run_all_tests():
         test_dashboard_context()
         
         print("\n" + "=" * 70)
+        
+        # Run dashboard query test (no credentials needed)
+        print("\n8️⃣ Running dashboard query handling test...")
+        from test_dashboard_query import test_dashboard_query
+        test_dashboard_query()
+        
+        print("\n" + "=" * 70)
         print("✅ All tests completed!")
         
     except Exception as e:

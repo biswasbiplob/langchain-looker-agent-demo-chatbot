@@ -864,99 +864,166 @@ class LookerChatAgent:
             return None
     
     def find_relevant_models_and_explores(self, user_question: str) -> Dict[str, Any]:
-        """Analyze user question using enhanced dashboard context and description prioritization"""
+        """Analyze user question using multiple search strategies with smart fallbacks"""
         try:
-            # PRIORITIZE the enhanced dashboard context approach first
-            logging.info("Using enhanced dashboard context approach for question analysis...")
-            enhanced_results = self._comprehensive_similarity_search(user_question)
+            logging.info(f"Analyzing question: '{user_question}'")
             
-            # If enhanced results found good matches with dashboard context, return them
-            if enhanced_results.get('dashboard_enhanced') and enhanced_results.get('suggested_explores'):
-                logging.info(f"Dashboard context found {len(enhanced_results['suggested_explores'])} relevant explores")
-                return enhanced_results
-            
-            # If enhanced results found good matches through traditional similarity, return them
-            if enhanced_results.get('suggested_explores') and len(enhanced_results['suggested_explores']) > 0:
-                if any(score > 50 for score in [100]):  # Placeholder for score checking
-                    logging.info("Enhanced similarity search found high-quality matches")
-                    return enhanced_results
-            
-            # Fallback to AI-based approach only if enhanced search found no good matches
-            if hasattr(self, 'llm') and self.llm:
-                logging.info("Falling back to AI-based analysis...")
+            # Strategy 1: Try enhanced dashboard context search (works with database)
+            try:
+                logging.info("Attempting enhanced dashboard context search...")
+                enhanced_results = self._comprehensive_similarity_search(user_question)
                 
-                # Try semantic search to pre-filter relevant explores
+                # Check if we got meaningful results from enhanced search
+                if enhanced_results.get('suggested_explores'):
+                    # Log what we found for debugging
+                    logging.info(f"Enhanced search found {len(enhanced_results['suggested_explores'])} explores: {enhanced_results['suggested_explores']}")
+                    
+                    # If we found dashboard-enhanced results, prioritize them
+                    if enhanced_results.get('dashboard_enhanced', False):
+                        logging.info("Dashboard context provided business intelligence - using enhanced results")
+                        return enhanced_results
+                    
+                    # If we found good traditional similarity matches, use them too
+                    if enhanced_results.get('total_explores_analyzed', 0) > 0:
+                        logging.info("Enhanced similarity analysis provided good matches - using results")
+                        return enhanced_results
+                    
+            except Exception as enhanced_error:
+                logging.warning(f"Enhanced search failed (likely database context issue): {enhanced_error}")
+            
+            # Strategy 2: Try semantic search with field-level analysis
+            try:
+                logging.info("Attempting semantic field-level search...")
                 semantic_results = self._semantic_keyword_search(user_question)
                 
-                # If semantic search found matches, use AI analysis
                 if semantic_results.get('matches', 0) > 0:
-                    # Get all available models and explores with metadata
-                    models = self.get_available_models()
+                    logging.info(f"Semantic search found {semantic_results['matches']} field-level matches")
                     
-                    # Build enhanced context with field information
-                    context = self._build_enhanced_context(user_question, models, semantic_results)
-                    
-                    prompt = f"""You are an expert at matching user questions to relevant Looker data models and explores.
+                    # If we have AI available, enhance semantic results with AI analysis
+                    if hasattr(self, 'llm') and self.llm:
+                        logging.info("Enhancing semantic results with AI analysis...")
+                        
+                        # Get models for context
+                        models = self.get_available_models()
+                        context = self._build_enhanced_context(user_question, models, semantic_results)
+                        
+                        # Focused AI prompt for better results
+                        prompt = f"""Analyze this user question and match it to the most relevant Looker explores.
 
 User Question: "{user_question}"
 
 {context}
 
-IMPORTANT: Pay special attention to field names and descriptions that match the user's question keywords.
-For example:
-- "ab test" or "A/B test" questions should match explores with fields like "test", "experiment", "variant", "winner"  
-- "GX" might be a specific product or feature code
-- Look for domain-specific terminology in field names
+Focus on these key matching criteria:
+1. "GX", "ab test", "A/B test", "experiment" → Look for testing/experiment data
+2. "cost", "billing", "finance" → Look for financial/cost data  
+3. "user", "behavior", "analytics" → Look for user analytics data
+4. Exact model/explore name mentions → Prioritize exact matches
 
-Based on the question and the detailed field information above, suggest:
-1. Top 3 most relevant models (just the names)
-2. Top 5 most relevant explores (with model prefix)
-3. Brief reasoning explaining which specific fields make these explores relevant
+Return the TOP 3 most relevant explores with model prefix (e.g., model.explore).
 
-Respond in this exact format:
-MODELS: model1, model2, model3
-EXPLORES: model.explore1, model.explore2, model.explore3, model.explore4, model.explore5
-REASONING: Explain which specific field names or descriptions make these explores relevant to the question"""
+EXPLORES: model.explore1, model.explore2, model.explore3
+REASONING: Brief explanation of why these explores match the question"""
+                        
+                        try:
+                            ai_response = self.llm.predict(prompt)
+                            
+                            # Parse AI response
+                            suggested_explores = []
+                            reasoning = "AI analysis with semantic field matching"
+                            
+                            for line in ai_response.strip().split('\\n'):
+                                if line.startswith('EXPLORES:'):
+                                    explores_text = line.replace('EXPLORES:', '').strip()
+                                    suggested_explores = [e.strip() for e in explores_text.split(',') if e.strip()]
+                                elif line.startswith('REASONING:'):
+                                    reasoning = line.replace('REASONING:', '').strip()
+                            
+                            if suggested_explores:
+                                logging.info(f"AI enhanced semantic search suggests: {suggested_explores}")
+                                return {
+                                    'suggested_models': models[:3],
+                                    'suggested_explores': suggested_explores[:5],
+                                    'reasoning': f"{reasoning} (AI + semantic field analysis)",
+                                    'semantic_matches': semantic_results.get('matches', 0)
+                                }
+                        except Exception as ai_error:
+                            logging.warning(f"AI enhancement failed: {ai_error}")
                     
-                    response = self.llm.predict(prompt)
+                    # Return semantic results without AI enhancement
+                    return {
+                        'suggested_models': self.get_available_models()[:3],
+                        'suggested_explores': semantic_results['relevant_explores'][:5],
+                        'reasoning': f"Semantic field-level matching found {semantic_results['matches']} relevant field matches",
+                        'semantic_matches': semantic_results.get('matches', 0)
+                    }
                     
-                    # Parse the AI response
-                    suggested_models = []
-                    suggested_explores = []
-                    reasoning = "AI analysis completed"
-                    
-                    lines = response.strip().split('\\n')
-                    for line in lines:
-                        if line.startswith('MODELS:'):
-                            model_names = [name.strip() for name in line.replace('MODELS:', '').split(',')]
-                            suggested_models = [m for m in models if m['name'] in model_names]
-                        elif line.startswith('EXPLORES:'):
-                            suggested_explores = [name.strip() for name in line.replace('EXPLORES:', '').split(',')]
-                        elif line.startswith('REASONING:'):
-                            reasoning = line.replace('REASONING:', '').strip()
-                    
-                    # Use semantic search results if AI didn't find good matches
-                    if not suggested_explores and semantic_results['relevant_explores']:
-                        suggested_explores = semantic_results['relevant_explores'][:5]
-                        reasoning += " (Enhanced with semantic keyword matching)"
-                    
-                    # Return AI results if found
-                    if suggested_explores:
-                        return {
-                            'suggested_models': suggested_models if suggested_models else models[:3],
-                            'suggested_explores': suggested_explores,
-                            'reasoning': reasoning,
-                            'semantic_matches': semantic_results.get('matches', 0)
-                        }
+            except Exception as semantic_error:
+                logging.warning(f"Semantic search failed: {semantic_error}")
             
-            # Final fallback: return the enhanced results even if they're not perfect
-            logging.info("Using enhanced results as final fallback")
-            return enhanced_results if enhanced_results.get('suggested_explores') else self._basic_fallback(user_question)
+            # Strategy 3: Basic model/explore name similarity matching
+            logging.info("Falling back to basic similarity matching...")
+            models = self.get_available_models()
+            all_explores = []
+            
+            # Get explores and do basic keyword matching
+            query_lower = user_question.lower()
+            query_keywords = self._extract_query_keywords(user_question)
+            
+            scored_explores = []
+            
+            for model in models[:10]:  # Limit to avoid timeouts
+                try:
+                    model_explores = self.get_available_explores(model['name'])
+                    for explore in model_explores:
+                        explore_key = f"{model['name']}.{explore}" if '.' not in explore else explore
+                        
+                        # Simple keyword matching score
+                        score = 0
+                        explore_lower = explore_key.lower()
+                        
+                        # Direct keyword matches
+                        for keyword in query_keywords:
+                            if keyword in explore_lower:
+                                score += 10
+                        
+                        # Domain-specific boosts
+                        if any(term in query_lower for term in ['ab', 'test', 'experiment', 'gx']) and any(term in explore_lower for term in ['test', 'experiment', 'ab']):
+                            score += 50
+                        
+                        if any(term in query_lower for term in ['cost', 'billing', 'finance']) and any(term in explore_lower for term in ['cost', 'billing', 'finance', 'athena']):
+                            score += 50
+                        
+                        if any(term in query_lower for term in ['user', 'behavior']) and any(term in explore_lower for term in ['user', 'behavior']):
+                            score += 30
+                        
+                        if score > 0:
+                            scored_explores.append((explore_key, score))
+                
+                except Exception as explore_error:
+                    logging.warning(f"Could not get explores for model {model['name']}: {explore_error}")
+                    continue
+            
+            # Sort by score and return top matches
+            scored_explores.sort(key=lambda x: x[1], reverse=True)
+            top_explores = [item[0] for item in scored_explores[:5]]
+            
+            if top_explores:
+                logging.info(f"Basic matching found explores: {top_explores}")
+                return {
+                    'suggested_models': models[:3],
+                    'suggested_explores': top_explores,
+                    'reasoning': f"Basic keyword matching across available explores (scored {len(scored_explores)} potential matches)",
+                    'basic_fallback': True
+                }
+            
+            # Final fallback
+            logging.warning("All search strategies failed - returning basic fallback")
+            return self._basic_fallback(user_question)
             
         except Exception as e:
-            logging.error(f"Error in model/explore suggestion: {e}")
-            # Return comprehensive search fallback
-            return self._comprehensive_search_fallback(user_question)
+            logging.error(f"Complete failure in model/explore suggestion: {e}")
+            return self._basic_fallback(user_question)
     
     def _semantic_keyword_search(self, user_question: str) -> Dict[str, Any]:
         """Perform semantic keyword search through cached explore metadata"""
@@ -1412,9 +1479,9 @@ REASONING: Explain which specific field names or descriptions make these explore
         return total_score
     
     def _comprehensive_search_fallback(self, user_question: str) -> Dict[str, Any]:
-        """Comprehensive fallback combining semantic and similarity search"""
+        """Comprehensive fallback with robust error handling"""
         try:
-            # First try semantic search
+            # Try semantic search first if database is available
             semantic_results = self._semantic_keyword_search(user_question)
             
             if semantic_results.get('matches', 0) > 0:
@@ -1422,12 +1489,17 @@ REASONING: Explain which specific field names or descriptions make these explore
                 return {
                     'suggested_models': models[:3],
                     'suggested_explores': semantic_results['relevant_explores'][:5],
-                    'reasoning': f"AI unavailable. Used semantic keyword matching - found {semantic_results['matches']} matches based on field metadata.",
+                    'reasoning': f"Semantic keyword matching found {semantic_results['matches']} field-level matches",
                     'semantic_matches': semantic_results.get('matches', 0)
                 }
             else:
-                # Fall back to comprehensive similarity search
-                return self._comprehensive_similarity_search(user_question)
+                # Try enhanced similarity search  
+                try:
+                    return self._comprehensive_similarity_search(user_question)
+                except Exception:
+                    # If enhanced search fails, do basic matching
+                    logging.warning("Enhanced similarity search failed, using basic fallback")
+                    return self._basic_fallback(user_question)
                 
         except Exception as e:
             logging.error(f"Error in comprehensive search fallback: {e}")

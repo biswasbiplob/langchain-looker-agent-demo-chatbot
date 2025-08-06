@@ -1,6 +1,41 @@
 import os
 import logging
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for, flash
+
+# Global JVM initialization function - will be called later when env vars are loaded
+_jvm_initialized = False
+
+def initialize_jvm():
+    """Initialize JVM with JDBC driver classpath"""
+    global _jvm_initialized
+    if _jvm_initialized:
+        return
+        
+    try:
+        import jpype
+        if not jpype.isJVMStarted():
+            java_home = os.getenv('JAVA_HOME')
+            jpype_jvm_path = os.getenv('JPYPE_JVM')
+            jdbc_jar_path = os.getenv('JDBC_DRIVER_PATH')
+            
+            logging.info(f"Attempting JVM initialization...")
+            logging.info(f"JAVA_HOME: {java_home}")
+            logging.info(f"JPYPE_JVM: {jpype_jvm_path}")
+            logging.info(f"JDBC_DRIVER_PATH: {jdbc_jar_path}")
+            
+            if jpype_jvm_path and os.path.exists(jpype_jvm_path):
+                if jdbc_jar_path and os.path.exists(jdbc_jar_path):
+                    full_jar_path = os.path.abspath(jdbc_jar_path)
+                    jpype.startJVM(jpype_jvm_path, f"-Djava.class.path={full_jar_path}")
+                    logging.info(f"✅ JVM initialized with JDBC classpath: {full_jar_path}")
+                else:
+                    jpype.startJVM(jpype_jvm_path)
+                    logging.info("✅ JVM initialized without JDBC classpath")
+                _jvm_initialized = True
+            else:
+                logging.warning(f"❌ JVM path not found: {jpype_jvm_path}")
+    except Exception as e:
+        logging.warning(f"❌ JVM initialization failed: {e}")
 from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_sqlalchemy import SQLAlchemy
@@ -8,9 +43,7 @@ from sqlalchemy.orm import DeclarativeBase
 from werkzeug.middleware.proxy_fix import ProxyFix
 from chat_agent import LookerChatAgent
 
-# Set up Java environment for JDBC driver
-os.environ['JAVA_HOME'] = '/nix/store/1jm9fvrqrry22z9kgqa0v55nnz0jsk09-openjdk-11.0.23+9/lib/openjdk'
-os.environ['JDBC_DRIVER_PATH'] = '/home/runner/workspace/attached_assets/looker-jdbc.jar'
+# Java environment will be loaded from .env file
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -66,11 +99,10 @@ def get_or_create_agent():
             'LOOKER_BASE_URL': current_user.looker_base_url,
             'LOOKER_CLIENT_ID': current_user.looker_client_id,
             'LOOKER_CLIENT_SECRET': current_user.looker_client_secret,
-            'OPENAI_API_KEY': current_user.openai_api_key,
-            'LOOKML_MODEL_NAME': current_user.lookml_model_name
+            'OPENAI_API_KEY': current_user.openai_api_key
         }
         
-        # Check if user has all required credentials
+        # Check if user has all required credentials (LOOKML_MODEL_NAME no longer required)
         missing_creds = [key for key, value in user_creds.items() if not value]
         if missing_creds:
             app.logger.warning(f"User missing credentials: {missing_creds}")
@@ -82,8 +114,7 @@ def get_or_create_agent():
             original_env[key] = os.environ.get(key)
             os.environ[key] = value
         
-        # Set JDBC driver path
-        os.environ['JDBC_DRIVER_PATH'] = '/home/runner/workspace/drivers/looker-jdbc.jar'
+        # JDBC driver path loaded from .env file
         
         try:
             chat_agent = LookerChatAgent()
@@ -100,7 +131,7 @@ def get_or_create_agent():
                     del os.environ[key]
     
     # Fallback to environment variables if no user is logged in
-    required_vars = ['LOOKER_BASE_URL', 'LOOKER_CLIENT_ID', 'LOOKER_CLIENT_SECRET', 'OPENAI_API_KEY', 'LOOKML_MODEL_NAME']
+    required_vars = ['LOOKER_BASE_URL', 'LOOKER_CLIENT_ID', 'LOOKER_CLIENT_SECRET', 'OPENAI_API_KEY']
     missing_vars = [var for var in required_vars if not os.environ.get(var)]
     
     if missing_vars:
@@ -291,8 +322,7 @@ def chat():
                                 temp_env['LOOKER_CLIENT_SECRET'] = value
                             elif key == 'openaiApiKey':
                                 temp_env['OPENAI_API_KEY'] = value
-                            elif key == 'lookmlModelName':
-                                temp_env['LOOKML_MODEL_NAME'] = value
+                            # LOOKML_MODEL_NAME no longer required - removed handling
                         
                         # Backup current env vars
                         backup_env = {}
@@ -460,8 +490,7 @@ def test_connection():
                             temp_env['LOOKER_CLIENT_SECRET'] = value
                         elif key == 'openaiApiKey':
                             temp_env['OPENAI_API_KEY'] = value
-                        elif key == 'lookmlModelName':
-                            temp_env['LOOKML_MODEL_NAME'] = value
+                        # LOOKML_MODEL_NAME no longer required - removed handling
                     
                     # Backup current env vars
                     backup_env = {}
@@ -505,4 +534,5 @@ with app.app_context():
     db.create_all()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 5001))
+    app.run(host='0.0.0.0', port=port, debug=True)

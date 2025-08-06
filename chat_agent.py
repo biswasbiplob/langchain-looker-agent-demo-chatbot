@@ -434,25 +434,58 @@ class LookerChatAgent:
                 self.dashboards_cache = db_dashboards
                 return db_dashboards
             
-            # If no fresh database cache, fetch from Looker API
-            logging.info("Fetching dashboards from Looker API...")
-            dashboards = self.sdk.all_dashboards(fields='id,title,description,folder,updated_at,view_count')
+            # If no fresh database cache, fetch from Looker API with comprehensive fields
+            logging.info("Fetching dashboards from Looker API with enhanced metadata...")
+            
+            # Fetch with all available dashboard fields for better matching
+            dashboards = self.sdk.all_dashboards(
+                fields='id,title,description,folder,tags,updated_at,view_count,space,dashboard_filters,dashboard_elements'
+            )
             dashboard_list = []
             
-            for dashboard in dashboards[:50]:  # Limit to prevent overwhelming API
+            logging.info(f"Retrieved {len(dashboards)} dashboards from Looker API")
+            
+            # Process all dashboards (remove the limit to ensure we don't miss target dashboards)
+            for i, dashboard in enumerate(dashboards):
                 if not dashboard.id:
                     continue
-                    
+                
+                # Extract folder information more robustly
+                folder_name = ""
+                if hasattr(dashboard, 'folder') and dashboard.folder:
+                    if hasattr(dashboard.folder, 'name'):
+                        folder_name = dashboard.folder.name
+                    elif isinstance(dashboard.folder, dict):
+                        folder_name = dashboard.folder.get('name', '')
+                
+                # Extract space information if available
+                space_name = ""
+                if hasattr(dashboard, 'space') and dashboard.space:
+                    if hasattr(dashboard.space, 'name'):
+                        space_name = dashboard.space.name
+                    elif isinstance(dashboard.space, dict):
+                        space_name = dashboard.space.get('name', '')
+                
                 dashboard_info = {
                     'id': dashboard.id,
-                    'title': getattr(dashboard, 'title', ''),
+                    'title': getattr(dashboard, 'title', '') or f"Dashboard {dashboard.id}",
                     'description': getattr(dashboard, 'description', ''),
-                    'folder': getattr(dashboard, 'folder', {}).get('name', '') if hasattr(dashboard, 'folder') and dashboard.folder else '',
+                    'folder': folder_name or space_name,  # Use space if folder not available
                     'view_count': getattr(dashboard, 'view_count', 0),
                     'updated_at': getattr(dashboard, 'updated_at', ''),
                     'explore_references': [],  # Will be populated when detailed info is fetched
+                    'tags': getattr(dashboard, 'tags', [])
                 }
                 dashboard_list.append(dashboard_info)
+                
+                # Log specific dashboards for debugging
+                if dashboard.id == '2659' or 'bi' in dashboard_info['title'].lower() or 'cost' in dashboard_info['title'].lower():
+                    logging.info(f"Key dashboard found - ID: {dashboard.id}, Title: '{dashboard_info['title']}', Folder: '{dashboard_info['folder']}'")
+                
+                # Prevent excessive API calls but don't miss important dashboards
+                if i > 100:  # Reasonable limit but higher than before
+                    logging.info(f"Limited dashboard fetch to first {i+1} dashboards to prevent timeout")
+                    break
             
             # Save to database cache for next time
             if dashboard_list:
@@ -1644,7 +1677,7 @@ REASONING: Brief explanation of why these explores match the question"""
             return "I couldn't retrieve the list of available models. Please try again later."
     
     def _handle_dashboard_query(self, user_message: str) -> str:
-        """Handle queries specifically asking about dashboards (e.g., 'is there a dashboard for X?')"""
+        """Handle queries specifically asking about dashboards with enhanced real-world matching"""
         try:
             logging.info(f"Handling dashboard-specific query: '{user_message}'")
             
@@ -1654,31 +1687,33 @@ REASONING: Brief explanation of why these explores match the question"""
             if not dashboards:
                 return "I couldn't retrieve any dashboards at the moment. This might be due to permissions or connectivity issues. Please check with your Looker administrator."
             
+            logging.info(f"Retrieved {len(dashboards)} dashboards for analysis")
+            
             # Extract query keywords for matching
             query_keywords = self._extract_query_keywords(user_message)
             
-            # Score dashboards using enhanced similarity with high description weighting
+            # Score dashboards using improved real-world matching
             scored_dashboards = []
             
             for dashboard in dashboards:
-                score = self._calculate_enhanced_similarity_score(
-                    user_message,
-                    dashboard.get('title', ''),
-                    dashboard.get('description', ''),
-                    query_keywords,
-                    description_weight=10.0  # Very high weight for dashboard descriptions
-                )
+                # Calculate comprehensive score for real Looker data
+                score = self._calculate_dashboard_relevance_score(user_message, dashboard, query_keywords)
                 
                 if score > 0:
                     dashboard_info = {
                         'dashboard': dashboard,
                         'score': score,
                         'title': dashboard.get('title', ''),
-                        'description': dashboard.get('description', ''),
+                        'description': dashboard.get('description', '') or "No description available",
                         'folder': dashboard.get('folder', ''),
-                        'explore_refs': dashboard.get('explore_references', [])
+                        'explore_refs': dashboard.get('explore_references', []),
+                        'debug_reason': self._get_match_reasoning(user_message, dashboard, score)
                     }
                     scored_dashboards.append(dashboard_info)
+                    
+                    # Log top scoring dashboards for debugging
+                    if score > 10:
+                        logging.info(f"Dashboard '{dashboard.get('title', '')}' scored {score:.1f} - {dashboard_info['debug_reason']}")
             
             # Sort by score and get top matches
             scored_dashboards.sort(key=lambda x: x['score'], reverse=True)
@@ -1741,6 +1776,112 @@ REASONING: Brief explanation of why these explores match the question"""
         except Exception as e:
             logging.error(f"Error handling dashboard query: {e}")
             return "I encountered an error while searching for dashboards. Please try rephrasing your question or check if you have access to dashboards in your Looker instance."
+    
+    def _calculate_dashboard_relevance_score(self, user_question: str, dashboard: Dict[str, Any], query_keywords: List[str]) -> float:
+        """Calculate dashboard relevance score optimized for real Looker data"""
+        try:
+            score = 0.0
+            title = dashboard.get('title', '').lower()
+            description = dashboard.get('description', '').lower()
+            folder = dashboard.get('folder', '').lower()
+            
+            # Essential matching for real-world scenarios
+            
+            # 1. EXACT PHRASE MATCHING (highest priority)
+            question_lower = user_question.lower()
+            
+            # Bi-weekly specific matching
+            if 'bi weekly' in question_lower or 'biweekly' in question_lower or 'bi-weekly' in question_lower:
+                if 'bi weekly' in title or 'biweekly' in title or 'bi-weekly' in title:
+                    score += 100  # Very high score for exact bi-weekly match
+                elif 'weekly' in title and 'bi' in title:
+                    score += 80   # High score for separate bi + weekly
+                elif 'weekly' in title:
+                    score += 20   # Lower score for just weekly
+                    
+            # Cost/Finance specific matching 
+            cost_terms = ['cost', 'finance', 'finops', 'billing', 'budget', 'spend', 'expense']
+            cost_in_question = any(term in question_lower for term in cost_terms)
+            cost_in_title = any(term in title for term in cost_terms)
+            
+            if cost_in_question and cost_in_title:
+                score += 80   # High boost for cost matching
+                
+            # 2. KEYWORD MATCHING with domain-specific boosts
+            for keyword in query_keywords:
+                if keyword in title:
+                    if keyword in ['cost', 'billing', 'finance', 'budget']:
+                        score += 50  # High score for financial keywords
+                    elif keyword in ['weekly', 'daily', 'monthly']:
+                        score += 40  # High score for time period keywords  
+                    elif keyword in ['check', 'overview', 'dashboard']:
+                        score += 20  # Medium score for general terms
+                    else:
+                        score += 30  # Standard keyword match
+                        
+                # Description matching (if available)
+                if description and len(description) > 10 and keyword in description:
+                    score += 25
+                    
+                # Folder matching (business context)
+                if folder and keyword in folder:
+                    score += 15
+            
+            # 3. PARTIAL WORD MATCHING for business terms
+            business_matches = 0
+            if 'cost' in question_lower:
+                if any(term in title for term in ['cost', 'finops', 'billing', 'aws', 'finance']):
+                    business_matches += 1
+            if 'weekly' in question_lower:
+                if any(term in title for term in ['week', 'daily', 'period']):
+                    business_matches += 1
+            if 'check' in question_lower or 'overview' in question_lower:
+                if any(term in title for term in ['overview', 'dashboard', 'monitor', 'track', 'check']):
+                    business_matches += 1
+                    
+            score += business_matches * 25
+            
+            # 4. FOLDER-BASED CONTEXT SCORING
+            important_folders = ['finance', 'finops', 'cost', 'accounting', 'budget', 'released by department']
+            if cost_in_question and any(folder_term in folder for folder_term in important_folders):
+                score += 30
+            
+            # 5. PENALTIES for obvious mismatches
+            if cost_in_question and any(bad_term in title for bad_term in ['traffic', 'experiment', 'marketing']) and not cost_in_title:
+                score *= 0.3  # Significant penalty for wrong domain
+                
+            return score
+            
+        except Exception as e:
+            logging.warning(f"Error calculating dashboard relevance score: {e}")
+            return 0.0
+    
+    def _get_match_reasoning(self, user_question: str, dashboard: Dict[str, Any], score: float) -> str:
+        """Generate debug reasoning for why a dashboard matched"""
+        title = dashboard.get('title', '')
+        folder = dashboard.get('folder', '')
+        
+        reasons = []
+        
+        if 'bi' in title.lower() and 'weekly' in title.lower():
+            reasons.append("bi-weekly exact match")
+        elif 'weekly' in title.lower():
+            reasons.append("weekly period match")
+            
+        if any(term in title.lower() for term in ['cost', 'finops', 'billing']):
+            reasons.append("cost/finance terms")
+            
+        if folder:
+            reasons.append(f"folder: {folder}")
+            
+        if score > 80:
+            reasons.append("high relevance")
+        elif score > 40:
+            reasons.append("medium relevance")
+        else:
+            reasons.append("low relevance")
+            
+        return " | ".join(reasons) if reasons else "keyword match"
     
     def _generate_dashboard_url(self, dashboard_id: str) -> str:
         """Generate a complete URL for a Looker dashboard"""

@@ -26,6 +26,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Full Database Caching Test: `python tests/test_database_caching.py` (requires Looker credentials)
   - Semantic Search Test: `python tests/test_semantic_search.py` (tests field-level keyword matching)
   - Comprehensive Similarity Search Test: `python tests/test_similarity_search.py` (tests fuzzy model matching)
+  - Dashboard Context Integration Test: `python tests/test_dashboard_context.py` (tests enhanced dashboard context system)
+  - Dashboard Query Test: `python tests/test_dashboard_query.py` (tests dashboard-specific query handling with URLs)
   - Enhanced Model Selection Test: `python tests/test_improved_model_selection.py` (requires credentials)
   - Database Tables Test: `python tests/test_db_tables.py`
 - **Test Requirements**: Ensure all environment variables are set before running tests
@@ -44,6 +46,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **ChatError**: Error tracking for monitoring
 - **LookerModel**: Database caching of Looker model metadata (24-hour cache)
 - **LookerExplore**: Database caching of Looker explore metadata with dimensions/measures (24-hour cache)
+- **LookerDashboard**: Database caching of Looker dashboard metadata with business context (24-hour cache)
+- **DashboardExploreMapping**: Business context mapping between dashboards and explores
 
 ### Frontend Architecture
 - **Templates**: Jinja2 templates for login/register pages and demo interface
@@ -69,6 +73,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Requires JDBC driver (looker-jdbc.jar) for database connections
 - Dynamic agent creation based on user credentials or environment variables
 - Chat history context maintained in Flask sessions
+
+### Dashboard Query System (Enhanced Feature)
+- **Dashboard-Specific Query Detection**: Automatically detects queries asking specifically about dashboards
+  - Recognizes patterns: "is there a dashboard for X", "show me dashboards about Y", "find a dashboard for Z"
+  - Highest priority routing ensures dashboard queries get specialized handling
+- **Enhanced Dashboard Search & Matching**:
+  - **Real-World Optimized Scoring**: Designed for production Looker instances with potentially empty descriptions
+  - **Bi-Weekly Specific Matching**: Special handling for "bi-weekly", "biweekly", "bi weekly" queries
+  - **Domain-Specific Recognition**: Cost/Finance, Experiments, User Analytics domain awareness
+  - **Folder-Based Context**: Uses dashboard folders for business context scoring
+  - **Penalty System**: Reduces relevance for obvious domain mismatches
+- **Comprehensive Dashboard Response Format**:
+  - Dashboard title with folder/space context
+  - Business-friendly descriptions (when available)
+  - **Direct clickable URLs** to actual Looker dashboards
+  - Related explores for deeper analysis
+  - Multiple relevant dashboard suggestions with ranking
+- **Enhanced Dashboard Fetching**: 
+  - Fetches comprehensive dashboard metadata including tags, folders, spaces
+  - Increased limit (100+ dashboards) to ensure target dashboards aren't missed
+  - Robust error handling for missing dashboard metadata
+  - Debug logging for dashboard discovery and scoring
 
 ### API Endpoints
 - `/api/chat`: Main chat processing with Looker agent
@@ -117,3 +143,43 @@ Optional:
 - Comprehensive error handling in chat_agent.py with user-friendly messages
 - Database logging of errors and chat sessions
 - Agent initialization failures handled gracefully
+
+## Dashboard Query Troubleshooting
+
+### Common Issues and Solutions
+
+#### Issue: Dashboard queries return wrong/irrelevant dashboards
+**Root Cause**: Target dashboard not being found or scored properly
+**Solutions**:
+1. **Check Dashboard Fetching**: Verify the target dashboard is being retrieved from Looker API
+   - Look for log message: `Key dashboard found - ID: {target_id}, Title: '{title}', Folder: '{folder}'`
+   - If missing, dashboard may be beyond the 100-dashboard fetch limit or have access restrictions
+
+2. **Debug Dashboard Scoring**: Check logs for dashboard scoring information  
+   - Look for: `Dashboard '{title}' scored {score} - {reason}`
+   - Scores above 80 indicate high relevance, above 40 medium relevance
+
+3. **Verify Keywords**: Ensure query keywords match dashboard titles/descriptions
+   - "bi-weekly" should match dashboards with "bi-weekly", "biweekly", or "bi weekly" in title
+   - "cost" should match dashboards with "cost", "finops", "billing", "finance" terms
+
+#### Issue: Dashboard descriptions showing "No description available"
+**Root Cause**: Looker API not returning description fields or dashboards lacking descriptions
+**Solutions**:
+1. **Relies on Title Matching**: System is optimized to work with title-only matching when descriptions are unavailable
+2. **Folder Context**: Uses dashboard folder/space names for additional context
+3. **Domain-Specific Logic**: Recognizes cost, experiment, and analytics domains from titles alone
+
+#### Issue: Specific dashboard (e.g., ID 2659) not appearing in results
+**Debugging Steps**:
+1. Check if dashboard is being fetched: Look for log `Key dashboard found - ID: 2659`
+2. If not found, dashboard may be:
+   - Beyond fetch limit (increase limit in get_available_dashboards)
+   - In a restricted folder/space
+   - Not accessible with current user permissions
+3. If found but not in top results, check scoring logs to see why it scored low
+
+### Performance Optimization
+- Dashboard fetching limited to 100 dashboards to prevent API timeouts
+- 24-hour database caching reduces API calls
+- Comprehensive error handling ensures graceful degradation
